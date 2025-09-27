@@ -36,4 +36,5 @@ class KaggleHub:
         df.to_csv(file_name, index=False)
         logger.info(f"Save dataset successfully, {file_name}")
     except Exception as e:
+      logger.error(f"Failed to save dataset, {file_name}", e)
       raise e
