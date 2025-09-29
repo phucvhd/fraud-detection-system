@@ -15,7 +15,7 @@ class KaggleHub:
     logger.info(f"Loading dataset {file_path}")
     try:
       df = kagglehub.dataset_load(
-        KaggleDatasetAdapter.PANDAS,
+        self.adapter,
         handle,
         file_path
       )
@@ -37,4 +37,13 @@ class KaggleHub:
         logger.info(f"Save dataset successfully, {file_name}")
     except Exception as e:
       logger.error(f"Failed to save dataset, {file_name}", e)
+      raise e
+
+  def download_dataset(self, handle: str) -> str:
+    try:
+      path = kagglehub.dataset_download(handle)
+      logger.info(f"Path to dataset files {path}")
+      return path
+    except Exception as e:
+      logger.error(f"Failed to download dataset {handle}", e)
       raise e
