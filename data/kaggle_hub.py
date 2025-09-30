@@ -15,7 +15,7 @@ class KaggleHub:
     logger.info(f"Loading dataset {file_path}")
     try:
       df = kagglehub.dataset_load(
-        KaggleDatasetAdapter.PANDAS,
+        self.adapter,
         handle,
         file_path
       )
