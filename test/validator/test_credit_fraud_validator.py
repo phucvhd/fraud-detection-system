@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from data.validator.validator import Validator
+from service.validator.credit_fraud_validator import CreditFraudValidator
 
-validator = Validator()
+validator = CreditFraudValidator()
 
 columns = ['Time'] + [f"V{i}" for i in range(1, 29)] + ['Amount', 'Class']
 mock_data = [
@@ -75,3 +75,8 @@ def test_fill_column_missing_values():
     result = validator.fill_column_missing_values(mock_dataframe, "Amount")
     assert result is True
     assert mock_dataframe.isnull().sum().sum() == 0
+
+def test_validate_quality():
+    mock_dataframe = pd.DataFrame(mock_data, columns=columns)
+    result = validator.validate_quality(mock_dataframe)
+    assert result is True
