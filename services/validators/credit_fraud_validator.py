@@ -127,6 +127,7 @@ class CreditFraudValidator:
             elif not self.validate_duplicate(df):
                 return False
             else:
+                logger.info("Data quality assessment completed. Dataset is ready")
                 return True
         except Exception as e:
             logger.error("Unexpected error: ", e)
