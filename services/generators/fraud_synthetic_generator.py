@@ -91,20 +91,14 @@ class FraudSyntheticDataGenerator:
             logger.error("Unexpected error: ", e)
             raise e
 
-    def generate_normal_transactions(self, n_samples=1000) -> DataFrame:
+    def generate_normal_transaction(self, time_interval: float):
         try:
-            data = {"Time": np.sort(np.random.uniform(0, self.max_transaction_time, n_samples))}
+            data = {"Time": time_interval}
 
             amount_params = self.params["normal"]["amount"]
             data["Amount"] = np.random.lognormal(
                 mean=amount_params["mean"],
-                sigma=amount_params["sigma"],
-                size=n_samples
-            )
-            data["Amount"] = np.clip(
-                data["Amount"],
-                amount_params["min"],
-                amount_params["p99"]
+                sigma=amount_params["sigma"]
             )
 
             for i in range(1, 29):
@@ -113,49 +107,55 @@ class FraudSyntheticDataGenerator:
 
                 data[v_col] = np.random.normal(
                     v_params["mean"],
-                    v_params["std"],
-                    n_samples
+                    v_params["std"]
                 )
 
             data["Class"] = 0
 
-            return pd.DataFrame(data)
+            return data
         except Exception as e:
             logger.error("Unexpected error: ", e)
             raise e
 
-    def generate_fraudulent_transactions(self, n_samples=100):
+    def generate_normal_transactions(self, n_samples=1000) -> DataFrame:
+        time_intervals = np.linspace(0, self.max_transaction_time, num=n_samples).tolist()
+        rows = []
+        for time_interval in time_intervals:
+            row = self.generate_normal_transaction(time_interval)
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    def generate_fraudulent_transaction(self, time_interval: float):
         try:
-            data = {"Time": np.sort(np.random.uniform(0, self.max_transaction_time, n_samples))}
+            data = {"Time": time_interval}
 
             fraud_ranges = self.params["fraud"]["amount_ranges"]
             fraud_type = np.random.choice(
                 ["small", "medium", "large"],
-                size=n_samples,
                 p=[fraud_ranges["small"]["proportion"],
                    fraud_ranges["medium"]["proportion"],
                    fraud_ranges["large"]["proportion"]]
             )
 
-            amounts = []
+            amount = 0
             for ft in fraud_type:
                 if ft == "small":
-                    amounts.append(np.random.uniform(
+                    amount = np.random.uniform(
                         fraud_ranges["small"]["min"],
                         fraud_ranges["small"]["max"]
-                    ))
+                    )
                 elif ft == "medium":
-                    amounts.append(np.random.uniform(
+                    amount = np.random.uniform(
                         fraud_ranges["medium"]["min"],
                         fraud_ranges["medium"]["max"]
-                    ))
+                    )
                 else:
-                    amounts.append(np.random.uniform(
+                    amount = np.random.uniform(
                         fraud_ranges["large"]["min"],
                         fraud_ranges["large"]["max"]
-                    ))
+                    )
 
-            data["Amount"] = np.array(amounts)
+            data["Amount"] = amount
 
             for i in range(1, 29):
                 v_col = f"V{i}"
@@ -163,23 +163,30 @@ class FraudSyntheticDataGenerator:
 
                 data[v_col] = np.random.normal(
                     v_params["mean"],
-                    v_params["std"],
-                    n_samples
+                    v_params["std"]
                 )
 
             data["Class"] = 1
 
-            return pd.DataFrame(data)
+            return data
         except Exception as e:
             logger.error("Unexpected error: ", e)
             raise e
 
-    def generate_transaction(self) -> dict:
+    def generate_fraudulent_transactions(self, n_samples=100) -> DataFrame:
+        time_intervals = np.linspace(0, self.max_transaction_time, num=n_samples).tolist()
+        rows = []
+        for time in time_intervals:
+            row = self.generate_fraudulent_transaction(time)
+            rows.append(row)
+        return pd.DataFrame(rows)
+
+    def generate_transaction(self, time_interval: float) -> dict:
         try:
             if random.random() < self.fraud_rate:
-                return self.generate_fraudulent_transactions(n_samples=1).to_dict(orient="records")[0]
+                return self.generate_fraudulent_transaction(time_interval)
             else:
-                return self.generate_normal_transactions(n_samples=1).to_dict(orient="records")[0]
+                return self.generate_normal_transaction(time_interval)
         except Exception as e:
             logger.error("Unexpected error: ", e)
             raise e

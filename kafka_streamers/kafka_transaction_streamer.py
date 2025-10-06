@@ -2,12 +2,14 @@ import json
 import logging
 import threading
 import time
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Dict, Optional
 
 from confluent_kafka import Producer
-from pandas.core.interchange.dataframe_protocol import DataFrame
+from pandas import DataFrame
+from pydantic import UUID4
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +19,13 @@ class StreamConfig:
     burst_mode: bool = False
     burst_interval_seconds: int = 60
     burst_multiplier: float = 5.0
-    partition_key_field: str = "card_number"
 
 class KafkaTransactionStreamer:
     def __init__(self,
                  bootstrap_servers: str,
                  topic: str,
                  config: StreamConfig,
-                 data_generator: Callable[[], Dict]):
+                 data_generator: Callable[[float], Dict]):
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         self.config = config
@@ -74,26 +75,28 @@ class KafkaTransactionStreamer:
     def start_streaming(self, duration_seconds: Optional[int] = None):
         self.running = True
         start_time = time.time()
-        last_log_time = start_time
+        transaction_time = 0
 
         logger.info(f"Starting stream to topic '{self.topic}' at {self.config.transactions_per_second} TPS")
 
         try:
             while self.running:
                 current_time = time.time()
+                delay = self._calculate_delay(current_time)
 
                 if duration_seconds and (current_time - start_time) >= duration_seconds:
                     logger.info("Duration limit reached, stopping stream")
                     break
 
-                transaction = self.data_generator()
+                transaction = self.data_generator(transaction_time)
+                transaction_time += delay
 
                 if 'timestamp' not in transaction:
                     transaction['timestamp'] = datetime.now().isoformat()
 
                 message = json.dumps(transaction).encode('utf-8')
 
-                partition_key = str(transaction.get(self.config.partition_key_field, ''))
+                partition_key = str(uuid.uuid4())
 
                 self.producer.produce(
                     topic=self.topic,
@@ -104,11 +107,6 @@ class KafkaTransactionStreamer:
 
                 self.producer.poll(0)
 
-                if (current_time - last_log_time) >= 10:
-                    self._log_stats()
-                    last_log_time = current_time
-
-                delay = self._calculate_delay(current_time)
                 time.sleep(delay)
 
         except KeyboardInterrupt:
@@ -116,20 +114,48 @@ class KafkaTransactionStreamer:
         finally:
             self.stop_streaming()
 
+    # def stream_dataframe(self, df: DataFrame):
+    #     self.running = True
+    #     logger.info(f"Starting stream to topic '{self.topic}' at {self.config.transactions_per_second} TPS")
+    #
+    #     try:
+    #         previous_time = 0
+    #
+    #         for idx, row in df.iterrows():
+    #
+    #             transaction = row.to_dict()
+    #
+    #             time_diff = row['Time'] - previous_time
+    #             delay = max(0, time_diff)
+    #             previous_time = row['Time']
+    #
+    #             if 'timestamp' not in transaction:
+    #                 transaction['timestamp'] = datetime.now().isoformat()
+    #
+    #             message = json.dumps(transaction).encode('utf-8')
+    #
+    #             partition_key = str(transaction.get(self.config.partition_key_field, idx))
+    #
+    #             self.producer.produce(
+    #                 topic=self.topic,
+    #                 value=message,
+    #                 key=partition_key.encode('utf-8'),
+    #                 callback=self._delivery_callback
+    #             )
+    #
+    #             self.producer.poll(0)
+    #
+    #             time.sleep(delay)
+    #
+    #     except KeyboardInterrupt:
+    #         logger.info("\n⚠️  Received interrupt signal, stopping stream...")
+    #     except Exception as e:
+    #         logger.error(f"\n❌ Error during streaming: {e}")
+    #         raise
+    #     finally:
+    #         self._finalize_stream()
+
     def stop_streaming(self):
         self.running = False
         logger.info("Flushing remaining messages...")
         self.producer.flush(timeout=10)
-        self._log_stats()
-
-    def _log_stats(self):
-        with self._stats_lock:
-            logger.info(
-                f"Stats - Total sent: {self.stats['total_sent']}, "
-                f"Failed: {self.stats['failed']}, "
-                f"Current rate: {self.stats['current_rate']:.2f} TPS"
-            )
-
-    def get_stats(self) -> Dict:
-        with self._stats_lock:
-            return self.stats.copy()

@@ -15,8 +15,7 @@ stream_config = StreamConfig(
         transactions_per_second=test_config.transactions_per_second,
         burst_mode=test_config.burst_mode,
         burst_interval_seconds=test_config.burst_interval_seconds,
-        burst_multiplier=test_config.burst_multiplier,
-        partition_key_field=test_config.partition_key_field
+        burst_multiplier=test_config.burst_multiplier
     )
 
 def test_start_streaming():
@@ -28,6 +27,6 @@ def test_start_streaming():
     )
 
     streamer.start_streaming(duration_seconds=5)
-    time.sleep(10)
+    time.sleep(5)
     streamer.stop_streaming()
 
