@@ -9,32 +9,32 @@ from typing import Callable, Dict, Optional
 
 from confluent_kafka import Producer
 
+from config.kafka_config import KafkaConfig
+
 logger = logging.getLogger(__name__)
 
 @dataclass
-class StreamConfig:
+class ProducerConfig:
     transactions_per_second: float
     burst_mode: bool = False
     burst_interval_seconds: int = 60
     burst_multiplier: float = 5.0
 
-class KafkaTransactionStreamer:
+class KafkaTransactionProducer:
     def __init__(self,
-                 bootstrap_servers: str,
                  topic: str,
-                 config: StreamConfig,
+                 kafka_config: KafkaConfig,
                  data_generator: Callable[[float], Dict]):
-        self.bootstrap_servers = bootstrap_servers
         self.topic = topic
-        self.config = config
+        self.kafka_config = kafka_config
         self.data_generator = data_generator
 
         self.producer = Producer({
-            "bootstrap.servers": bootstrap_servers,
-            "compression.type": "snappy",
-            "linger.ms": 10,
-            "batch.size": 32768,
-            "acks": 1
+            "bootstrap.servers": kafka_config.producer_bootstrap_servers,
+            "compression.type": kafka_config.compression_type,
+            "linger.ms": kafka_config.linger_ms,
+            "batch.size": kafka_config.batch_size,
+            "acks": kafka_config.acks
         })
 
         self.running = False
@@ -56,26 +56,26 @@ class KafkaTransactionStreamer:
                 self.stats["total_sent"] += 1
 
     def _calculate_delay(self, current_time: float) -> float:
-        if self.config.burst_mode:
-            seconds_in_cycle = current_time % (self.config.burst_interval_seconds * 2)
-            in_burst = seconds_in_cycle < self.config.burst_interval_seconds
+        if self.kafka_config.burst_mode:
+            seconds_in_cycle = current_time % (self.kafka_config.burst_interval_seconds * 2)
+            in_burst = seconds_in_cycle < self.kafka_config.burst_interval_seconds
 
-            rate = (self.config.transactions_per_second * self.config.burst_multiplier
-                    if in_burst else self.config.transactions_per_second)
+            rate = (self.kafka_config.transactions_per_second * self.kafka_config.burst_multiplier
+                    if in_burst else self.kafka_config.transactions_per_second)
         else:
-            rate = self.config.transactions_per_second
+            rate = self.kafka_config.transactions_per_second
 
         with self._stats_lock:
             self.stats["current_rate"] = rate
 
         return 1.0 / rate if rate > 0 else 0
 
-    def start_streaming(self, duration_seconds: Optional[int] = None):
+    def start_loading(self, duration_seconds: Optional[int] = None):
         self.running = True
         start_time = time.time()
         interval_time = 0
 
-        logger.info(f"Starting stream to topic '{self.topic}' at {self.config.transactions_per_second} TPS")
+        logger.info(f"Starting load to topic '{self.topic}' at {self.kafka_config.transactions_per_second} TPS")
 
         try:
             while self.running:
@@ -108,11 +108,11 @@ class KafkaTransactionStreamer:
                 time.sleep(delay)
 
         except KeyboardInterrupt:
-            logger.info("Received interrupt signal, stopping stream")
+            logger.info("Received interrupt signal, stopping")
         finally:
-            self.stop_streaming()
+            self.stop_loading()
 
-    def stop_streaming(self):
+    def stop_loading(self):
         self.running = False
         logger.info("Flushing remaining messages...")
         self.producer.flush(timeout=10)
