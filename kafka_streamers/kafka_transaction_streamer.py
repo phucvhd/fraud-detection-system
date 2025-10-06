@@ -73,7 +73,7 @@ class KafkaTransactionStreamer:
     def start_streaming(self, duration_seconds: Optional[int] = None):
         self.running = True
         start_time = time.time()
-        transaction_time = 0
+        interval_time = 0
 
         logger.info(f"Starting stream to topic '{self.topic}' at {self.config.transactions_per_second} TPS")
 
@@ -86,8 +86,8 @@ class KafkaTransactionStreamer:
                     logger.info("Duration limit reached, stopping stream")
                     break
 
-                transaction = self.data_generator(transaction_time)
-                transaction_time += delay
+                transaction = self.data_generator(interval_time)
+                interval_time += delay
 
                 if "timestamp" not in transaction:
                     transaction["timestamp"] = datetime.now().isoformat()
