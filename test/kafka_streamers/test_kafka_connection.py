@@ -88,7 +88,7 @@ def test_consumer():
 
 
 if __name__ == "__main__":
-    print("Testing Kafka Connection with confluent-kafka...")
+    print("Testing Kafka Connection with confluent-kafka_producers...")
     try:
         test_producer()
         time.sleep(3)
