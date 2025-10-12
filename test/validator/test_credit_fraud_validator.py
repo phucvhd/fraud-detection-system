@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from service.validator.credit_fraud_validator import CreditFraudValidator
+from services.validators.credit_fraud_validator import CreditFraudValidator
 
 validator = CreditFraudValidator()
 

@@ -4,33 +4,32 @@ import time
 import pandas as pd
 from confluent_kafka import Consumer
 
-from config.config import Config
-from config.kafka_config import KafkaConfig
+from config.config_loader import ConfigLoader
+from config.kafka_config import KafkaConfigLoader
 from services.kafka_producers.kafka_transaction_producer import ProducerConfig, KafkaTransactionProducer
 
 from services.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
 
-test_config = Config(profile_env="test")
-test_kafka_config = KafkaConfig(test_config)
+config_loader = ConfigLoader(path="application-test.yaml")
+test_kafka_config_loader = KafkaConfigLoader(config_loader)
 
 test_df = pd.read_csv("test_creditcard.csv")
-fraud_generator = FraudSyntheticDataGenerator(config=test_config, df=test_df)
+fraud_generator = FraudSyntheticDataGenerator(config_loader=config_loader, df=test_df)
 
-kafka_config = KafkaConfig(config=test_kafka_config)
+kafka_config_loader = KafkaConfigLoader(config_loader=config_loader)
 
-consumer_conf = {
-    "bootstrap.servers": kafka_config.consumer_bootstrap_servers,
-    "group.id": kafka_config.consumer_group_id,
-    "auto.offset.reset": kafka_config.consumer_auto_offset_reset,
-    "enable.auto.commit": kafka_config.consumer_enable_auto_commit,
-    "client.id": kafka_config.consumer_client_id
-}
-consumer = Consumer(consumer_conf)
+consumer = Consumer({
+    "bootstrap.servers": kafka_config_loader.kafka_producer_config["bootstrap_servers"],
+    "group.id": kafka_config_loader.kafka_producer_config["group_id"],
+    "auto.offset.reset": kafka_config_loader.kafka_producer_config["auto_offset_reset"],
+    "enable.auto.commit": kafka_config_loader.kafka_producer_config["enable_auto_commit"],
+    "client.id": kafka_config_loader.kafka_producer_config["client_id"]
+})
 
 def test_start_loading():
     transaction_producer = KafkaTransactionProducer(
-        topic=test_kafka_config.topic,
-        kafka_config=kafka_config,
+        topic=kafka_config_loader.kafka_producer_config["topic"],
+        kafka_config_loader=kafka_config_loader,
         data_generator=fraud_generator.generate_transaction
     )
 
@@ -44,7 +43,7 @@ def test_start_loading():
     assert len(messages) > 0
 
 def _consume_messages(duration):
-    consumer.subscribe([test_kafka_config.topic])
+    consumer.subscribe([kafka_config_loader.kafka_producer_config["topic"]])
 
     messages = []
     timeout = time.time() + duration

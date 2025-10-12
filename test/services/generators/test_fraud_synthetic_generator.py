@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from config.config import Config
+from config.config_loader import ConfigLoader
 from services.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
 
 mock_amount_std = 1.2
@@ -9,9 +9,9 @@ mock_amount_mean = 3.5
 mock_features_std = {col: 1.5 for col in [f'V{i}' for i in range(1, 29)]}
 mock_features_mean = {col: 0 for col in [f'V{i}' for i in range(1, 29)]}
 
-test_config = Config(profile_env="test")
+test_config = ConfigLoader(path="application-test.yaml")
 test_df = pd.read_csv("test_creditcard.csv")
-fraud_generator = FraudSyntheticDataGenerator(config=test_config, df=test_df)
+fraud_generator = FraudSyntheticDataGenerator(config_loader=test_config, df=test_df)
 
 def test_generate_normal_transactions():
     n_samples = 10
