@@ -98,7 +98,9 @@ class FraudDetectionPipeline:
         )
 
     def save_artifacts(self):
-        output_path = Path(self.config_loader.config["output"]["model_path"])
+        now = datetime.now()
+        time_str = now.strftime("%Y%m%d_%H%M%S")
+        output_path = Path(self.config_loader.config["output"]["model_path"]+f"model_{time_str}")
         output_path.mkdir(parents=True, exist_ok=True)
 
         joblib.dump(
