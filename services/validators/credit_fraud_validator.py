@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class CreditFraudValidator:
     def __init__(self):
-        self._VALID_COLUMNS = ['Time'] + [f"V{i}" for i in range(1, 29)] + ['Amount', 'Class']
+        self._VALID_COLUMNS = ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount", "Class"]
 
     def validate_consistency(self, df: DataFrame) -> bool:
         try:
@@ -27,17 +27,17 @@ class CreditFraudValidator:
                 logger.warning("Data columns are incorrect")
                 return False
 
-            negative_times = (df['Time'] < 0).sum()
+            negative_times = (df["Time"] < 0).sum()
             if negative_times > 0:
                 logger.warning(f"{negative_times} total negative times")
                 return False
 
-            negative_amounts = (df['Amount'] < 0).sum()
+            negative_amounts = (df["Amount"] < 0).sum()
             if negative_amounts > 0:
                 logger.warning(f"{negative_amounts} total negative times")
                 return False
 
-            valid_class_range = df['Class'].isin([0, 1]).all()
+            valid_class_range = df["Class"].isin([0, 1]).all()
             if not valid_class_range:
                 logger.warning(f"Class range is not valid")
                 return False
@@ -96,8 +96,8 @@ class CreditFraudValidator:
 
     def validate_imbalance(self, df: DataFrame) -> bool:
         try:
-            fraud_counts = df['Class'].value_counts()
-            fraud_percentage = df['Class'].value_counts(normalize=True) * 100
+            fraud_counts = df["Class"].value_counts()
+            fraud_percentage = df["Class"].value_counts(normalize=True) * 100
 
             logger.info(f"Normal Transactions: {fraud_counts[0]:,} ({fraud_percentage[0]:.3f}%)")
             logger.info(f"Fraudulent Transactions: {fraud_counts[1]:,} ({fraud_percentage[1]:.3f}%)")
@@ -105,7 +105,7 @@ class CreditFraudValidator:
 
             if 0.3 < fraud_percentage[1] < 0.5:
                 logger.info("Data is balanced")
-                return False
+                return True
             if fraud_percentage[1] < 0.1:
                 logger.warning("Data is highly imbalanced")
             elif fraud_percentage[1] < 0.01:
@@ -113,7 +113,7 @@ class CreditFraudValidator:
             else:
                 logger.warning("Data is imbalanced")
 
-            return True
+            return False
         except Exception as e:
             logger.error("Unexpected error: ", e)
             return False

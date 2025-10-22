@@ -6,14 +6,14 @@ import pandas as pd
 from pandas import DataFrame
 from sklearn.preprocessing import StandardScaler
 
-from config.config import Config
+from config.config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
 
 class FraudSyntheticDataGenerator:
-    def __init__(self, config: Config, df: DataFrame, seed=42):
-        self.max_transaction_time = config.max_transaction_time
-        self.fraud_rate = config.fraud_rate
+    def __init__(self, config_loader: ConfigLoader, df: DataFrame, seed=42):
+        self.max_transaction_time = config_loader.config["fraud_generator"]["max_transaction_time"]
+        self.fraud_rate = config_loader.config["fraud_generator"]["fraud_rate"]
         np.random.seed(seed)
         random.seed(seed)
         self.scaler = StandardScaler()
