@@ -152,7 +152,7 @@ class CreditFraudDetection:
                 or self.recall) is None:
                 raise Exception("Model is not ready to save")
 
-            os.makedirs("models", exist_ok=True)
+            os.makedirs("../models", exist_ok=True)
 
             joblib.dump(self._preprocessor, "models/preprocessing_pipeline.pkl")
             logger.info("Preprocessing pipeline saved")
