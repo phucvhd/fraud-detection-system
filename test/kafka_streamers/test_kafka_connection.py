@@ -87,7 +87,7 @@ def test_consumer():
         pytest.fail(f"❌ Consumer test failed: {e}")
 
 
-if __name__ == "__main__":
+if __name__ == "main_pipeline.py":
     print("Testing Kafka Connection with confluent-kafka_producers...")
     try:
         test_producer()

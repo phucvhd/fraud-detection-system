@@ -12,6 +12,7 @@ from services.handlers.imbalance_handler import ImbalanceHandler
 from services.loaders.data_loader import DataLoader
 from services.model_trainers.fraud_model_trainer import FraudModelTrainer
 from services.preprocessors.fraud_preprocessor import FraudPreprocessor
+from services.tunner.hyper_tuner import HyperTuner
 from services.validators.credit_fraud_validator import CreditFraudValidator
 
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +29,7 @@ class FraudDetectionPipeline:
         self.imbalance_handler = ImbalanceHandler(self.config_loader)
         self.model_trainer = FraudModelTrainer(self.config_loader)
         self.evaluator = FraudModelEvaluator(self.config_loader)
+        self.hyper_tuner = HyperTuner(self.config_loader)
 
         self.train_df = None
         self.val_df = None
@@ -44,6 +46,10 @@ class FraudDetectionPipeline:
         self.test_metrics = None
         self.optimal_threshold = None
         self.val_metrics = None
+        self.best_params = None
+        self.best_score = None
+        self.cv_results = None
+        self.best_estimator = None
 
     def load_and_split_data(self):
         df = self.data_loader.load_data("../data/raw/creditcard.csv")
@@ -74,9 +80,26 @@ class FraudDetectionPipeline:
         (self.train_x_balanced,
          self.train_y_balanced) = self.imbalance_handler.fit_resample(self.train_x_processed, self.train_y)
 
+    def hyper_tuning(self):
+        search = self.hyper_tuner.init_tuner()
+        search.fit(self.train_x_balanced, self.train_y_balanced)
+        self.best_params = search.best_params_
+        self.best_score = search.best_score_
+        self.cv_results = search.cv_results_
+        self.best_estimator = search.best_estimator_
+        logger.info(f"Best {self.model_type} params: {self.best_params}")
+        logger.info(f"Best CV recall: {self.best_score:.4f}")
+
     def train_model(self):
         self.model_trainer.train(self.train_x_balanced, self.train_y_balanced)
         self.model = self.model_trainer.model
+
+    def evaluate_hyper_tune(self):
+        if self.best_estimator is None:
+            logger.error("Best estimator is not identified")
+            return
+        score = self.best_estimator.score(self.val_x_processed, self.val_y)
+        logger.info(f"Best estimator score: {score}")
 
     def evaluate_model(self):
         self.val_metrics = self.evaluator.evaluate(
@@ -188,6 +211,20 @@ class FraudDetectionPipeline:
             self.evaluate_model()
             self.save_artifacts()
             self.save_report()
+
+            logger.info("PIPELINE COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise e
+
+    def run_hyper_tune(self):
+        try:
+            self.load_and_split_data()
+            self.preprocess_data()
+            self.handle_imbalance()
+            self.hyper_tuning()
+            self.evaluate_hyper_tune()
 
             logger.info("PIPELINE COMPLETE!")
 

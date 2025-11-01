@@ -5,7 +5,7 @@ from typing import List
 
 import pandas as pd
 
-from pipelines.credit_fraud_detection import CreditFraudDetection
+from pipelines.archives.credit_fraud_detection import CreditFraudDetection
 
 logger = logging.getLogger(__name__)
 
