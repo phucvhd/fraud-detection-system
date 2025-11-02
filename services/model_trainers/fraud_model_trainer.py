@@ -3,14 +3,13 @@ import logging
 import xgboost as xgb
 from pandas import DataFrame
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 
 from config.config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
 
-class FraudModelTrainer:
+class FraudModel:
     def __init__(self, config_loader: ConfigLoader):
         self.model_config = config_loader.config["model"]
         self.model = None
@@ -49,18 +48,3 @@ class FraudModelTrainer:
         self.model.fit(train_x, train_y)
 
         logger.info("Model training complete")
-
-    # def get_feature_importance(self, feature_names):
-    #     if not hasattr(self.model, "feature_importances_"):
-    #         logger.warning("Model does not support feature importance")
-    #         return None
-    #
-    #     importance_df = pd.DataFrame({
-    #         "feature": feature_names,
-    #         "importance": self.model.feature_importances_
-    #     }).sort_values("importance", ascending=False)
-    #
-    #     logger.info("Top 10 most important features:")
-    #     logger.info(importance_df.head(10).to_string(index=False))
-    #
-    #     return importance_df

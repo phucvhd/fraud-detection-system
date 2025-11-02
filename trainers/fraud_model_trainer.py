@@ -4,7 +4,10 @@ from datetime import datetime
 from pathlib import Path
 
 import joblib
+import mlflow
 import pandas as pd
+import numpy as np
+from pandas import DataFrame, Series
 
 from config.config_loader import ConfigLoader
 from services.evaluators.fraud_model_evaluator import FraudModelEvaluator
@@ -15,14 +18,14 @@ from services.preprocessors.fraud_preprocessor import FraudPreprocessor
 from services.tuner.hyper_tuner import HyperTuner
 from services.validators.fraud_validator import FraudValidator
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class FraudDetectionPipeline:
-    def __init__(self):
-        self.config_loader = ConfigLoader(path="../config/application.yaml")
-        self.model_type = self.config_loader.config["model"]["type"]
+class FraudModelTrainer:
+    def __init__(self, config_loader: ConfigLoader):
+        self.config_loader = config_loader
+        self.raw_data_path = "../data/raw/creditcard.csv"
 
+        self.model_type = self.config_loader.config["model"]["type"]
         self.data_loader = DataLoader(self.config_loader)
         self.data_validator = FraudValidator()
         self.preprocessor = FraudPreprocessor(self.config_loader)
@@ -31,6 +34,7 @@ class FraudDetectionPipeline:
         self.evaluator = FraudModelEvaluator(self.config_loader)
         self.hyper_tuner = HyperTuner(self.config_loader)
 
+        self.run_id = self.generate_time_str()
         self.train_df = None
         self.val_df = None
         self.test_df = None
@@ -52,7 +56,7 @@ class FraudDetectionPipeline:
         self.best_estimator = None
 
     def load_and_split_data(self):
-        df = self.data_loader.load_data("../data/raw/creditcard.csv")
+        df = self.data_loader.load_data(self.raw_data_path)
 
         if not self.data_validator.validate_quality(df):
             raise ValueError("Data validation failed")
@@ -123,7 +127,7 @@ class FraudDetectionPipeline:
     def save_artifacts(self):
         now = datetime.now()
         time_str = now.strftime("%Y%m%d_%H%M%S")
-        output_path = Path(self.config_loader.config["output"]["model_path"]+f"model_{time_str}")
+        output_path = Path(self.config_loader.config["output"]["model_path"] + f"model_{time_str}")
         output_path.mkdir(parents=True, exist_ok=True)
 
         joblib.dump(
@@ -196,21 +200,60 @@ class FraudDetectionPipeline:
             }
         ])
 
-        now = datetime.now()
-        time_str = now.strftime("%Y%m%d_%H%M%S")
-        file_name = f"fraud_model_report_{time_str}.csv"
+        file_name = f"fraud_model_report_{self.run_id}.csv"
         df.to_csv(output_path / file_name, index=False)
         logger.info(f"Report saved to: {output_path}")
 
+    def log_params(self) -> None:
+        logger.info("Logging parameters to Mlflow")
+        mlflow.log_params(self.config_loader.
+                          config["model"]["params"][self.model_type])
+
+    def log_metrics(self, metrics: dict[str, float]) -> None:
+        logger.info("Logging metrics to Mlflow")
+        mlflow.log_metrics(metrics)
+
+    def log_model(self) -> None:
+        logger.info("Logging model to Mlflow")
+        if self.model is None:
+            raise ValueError("Model must be trained before logging")
+
+        if self.model_type == 'xgboost':
+            mlflow.xgboost.log_model(self.model, name="model")
+        else:
+            mlflow.sklearn.log_model(self.model, name="model")
+
+    def train(self, x_train: DataFrame, y_train: Series) -> None:
+        self.model.fit(x_train, y_train)
+
+    def predict(self, x: DataFrame) -> np.ndarray:
+        if self.model is None:
+            raise ValueError("Model must be trained before prediction")
+        return self.model.predict(x)
+
+    def predict_proba(self, x: DataFrame) -> np.ndarray:
+        if self.model is None:
+            raise ValueError("Model must be trained before prediction")
+        return self.model.predict_proba(x)[:, 1]
+
     def run(self):
         try:
-            self.load_and_split_data()
-            self.preprocess_data()
-            self.handle_imbalance()
-            self.train_model()
-            self.evaluate_model()
-            self.save_artifacts()
-            self.save_report()
+            experiment_name = f"fraud_detection_experiments_{self.run_id}"
+            mlflow.set_experiment(experiment_name)
+
+            with mlflow.start_run(run_name="my_experiment"):
+                self.load_and_split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.train_model()
+                self.evaluate_model()
+                self.save_artifacts()
+                self.save_report()
+
+                self.log_model()
+                self.log_params()
+                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
+                self.log_metrics(metrics)
 
             logger.info("PIPELINE COMPLETE!")
 
@@ -218,20 +261,6 @@ class FraudDetectionPipeline:
             logger.error(f"Pipeline failed: {e}")
             raise e
 
-    def run_hyper_tune(self):
-        try:
-            self.load_and_split_data()
-            self.preprocess_data()
-            self.handle_imbalance()
-            self.hyper_tuning()
-            self.evaluate_hyper_tune()
-
-            logger.info("PIPELINE COMPLETE!")
-
-        except Exception as e:
-            logger.error(f"Pipeline failed: {e}")
-            raise e
-
-if __name__ == '__main__':
-    pipeline = FraudDetectionPipeline()
-    pipeline.run()
+    def generate_time_str(self) -> str:
+        now = datetime.now()
+        return now.strftime("%Y%m%d_%H%M%S")

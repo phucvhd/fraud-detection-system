@@ -1,0 +1,122 @@
+kafka:
+  producer:
+    transaction_per_second: 100
+    burst_mode: true
+    burst_interval_seconds: 30
+    burst_multiplier: 5.0
+    bootstrap_servers: "localhost:9092"
+    topic: "transactions"
+    client_id: "fraud-detection-producer"
+    compression_type: "snappy"
+    linger_ms: 10
+    batch_size: 32768
+    acks: 1
+
+  consumer:
+    bootstrap_servers: "localhost:9092"
+    group_id: "fraud-detection-consumer-group"
+    auto_offset_reset: "earliest"
+    enable_auto_commit: true
+    client_id: "fraud-detection-consumer"
+
+fraud_generator:
+  max_transaction_time: 172800
+  fraud_rate: 0.005
+
+model:
+  train_ratio: 0.7
+  val_ratio: 0.15
+  type: "random_forest"
+  params:
+    random_forest:
+      n_estimators: 200
+      max_depth: 30
+      min_samples_split: 10
+      min_samples_leaf: 5
+      max_features: "sqrt"
+    xgboost:
+      n_estimators: 300
+      max_depth: 6
+      learning_rate: 0.1
+      random_state: 42
+      n_jobs: -1
+      eval_metric: "aucpr"
+    decision_tree:
+      criterion: entropy
+      max_depth: 6
+      min_samples_split: 5
+      min_samples_leaf: 3
+      random_state: 42
+
+imbalance:
+  method: smote
+  sampling_strategy: 0.6
+  random_state: 42
+
+preprocessor:
+  features_to_scale:
+    - Time
+    - Amount
+  features_to_keep:
+    - V1
+    - V2
+    - V3
+    - V4
+    - V5
+    - V6
+    - V7
+    - V8
+    - V9
+    - V10
+    - V11
+    - V12
+    - V13
+    - V14
+    - V15
+    - V16
+    - V17
+    - V18
+    - V19
+    - V20
+    - V21
+    - V22
+    - V23
+    - V24
+    - V25
+    - V26
+    - V27
+    - V28
+
+evaluation:
+  primary_metric: "recall"
+  metrics:
+    - precision
+    - recall
+    - f1
+    - pr_auc
+  threshold: 0.5
+
+tuner:
+  hyperparameter_tuning:
+    strategy: "random_search"
+    cv: 5
+    n_jobs: -1
+    verbose: 2
+    random_state: 42
+    n_iter: 50
+  param_grid:
+    grid_search:
+      n_estimators: [100, 200, 300]
+      max_depth: [10, 20, 30]
+      min_samples_split: [2, 5, 10]
+    random_search:
+      n_estimators: [100, 200, 300, 500]
+      max_depth: [20, 30, 40]
+      min_samples_split: [10, 20, 30]
+      min_samples_leaf: [5, 10, 15]
+      max_features: [sqrt, log2]
+
+
+output:
+  model_path: "models/"
+  report_path: "reports/"

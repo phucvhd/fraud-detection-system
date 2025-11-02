@@ -1,4 +1,3 @@
-import json
 import time
 
 import pandas as pd
@@ -6,7 +5,7 @@ from confluent_kafka import Consumer
 
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
-from services.kafka_producers.kafka_transaction_producer import ProducerConfig, KafkaTransactionProducer
+from services.kafka_producers.kafka_transaction_producer import KafkaTransactionProducer
 
 from services.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
 

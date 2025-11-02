@@ -1,9 +1,9 @@
 import numpy as np
 import pandas as pd
 
-from services.validators.credit_fraud_validator import CreditFraudValidator
+from services.validators.fraud_validator import FraudValidator
 
-validator = CreditFraudValidator()
+validator = FraudValidator()
 
 columns = ['Time'] + [f"V{i}" for i in range(1, 29)] + ['Amount', 'Class']
 mock_data = [
