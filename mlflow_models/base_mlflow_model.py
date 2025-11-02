@@ -21,10 +21,9 @@ from services.validators.credit_fraud_validator import CreditFraudValidator
 logger = logging.getLogger(__name__)
 
 class BaseMlflowModel:
-    def __init__(self, model_name: str, experiment_name: str, config_loader: ConfigLoader):
+    def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
-        self.model_name = model_name
-        self.experiment_name = experiment_name
+        self.raw_data_path = "../data/raw/creditcard.csv"
 
         self.model_type = self.config_loader.config["model"]["type"]
         self.data_loader = DataLoader(self.config_loader)
@@ -35,7 +34,7 @@ class BaseMlflowModel:
         self.evaluator = FraudModelEvaluator(self.config_loader)
         self.hyper_tuner = HyperTuner(self.config_loader)
 
-        self.run_id = None
+        self.run_id = self.generate_time_str()
         self.train_df = None
         self.val_df = None
         self.test_df = None
@@ -57,7 +56,7 @@ class BaseMlflowModel:
         self.best_estimator = None
 
     def load_and_split_data(self):
-        df = self.data_loader.load_data("../data/raw/creditcard.csv")
+        df = self.data_loader.load_data(self.raw_data_path)
 
         if not self.data_validator.validate_quality(df):
             raise ValueError("Data validation failed")
@@ -201,21 +200,21 @@ class BaseMlflowModel:
             }
         ])
 
-        now = datetime.now()
-        time_str = now.strftime("%Y%m%d_%H%M%S")
-        file_name = f"fraud_model_report_{time_str}.csv"
+        file_name = f"fraud_model_report_{self.run_id}.csv"
         df.to_csv(output_path / file_name, index=False)
         logger.info(f"Report saved to: {output_path}")
 
     def log_params(self) -> None:
+        logger.info("Logging parameters to Mlflow")
         mlflow.log_params(self.config_loader.
                           config["model"]["params"][self.model_type])
 
     def log_metrics(self, metrics: dict[str, float]) -> None:
-        logger.info("Logging metrics")
+        logger.info("Logging metrics to Mlflow")
         mlflow.log_metrics(metrics)
 
     def log_model(self) -> None:
+        logger.info("Logging model to Mlflow")
         if self.model is None:
             raise ValueError("Model must be trained before logging")
 
@@ -239,21 +238,29 @@ class BaseMlflowModel:
 
     def run(self):
         try:
-            self.load_and_split_data()
-            self.preprocess_data()
-            self.handle_imbalance()
-            self.train_model()
-            self.evaluate_model()
-            self.save_artifacts()
-            self.save_report()
+            experiment_name = f"fraud_detection_experiments_{self.run_id}"
+            mlflow.set_experiment(experiment_name)
 
-            self.log_model()
-            self.log_params()
-            metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
-            self.log_metrics(metrics)
+            with mlflow.start_run(run_name="my_experiment"):
+                self.load_and_split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.train_model()
+                self.evaluate_model()
+                self.save_artifacts()
+                self.save_report()
+
+                self.log_model()
+                self.log_params()
+                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
+                self.log_metrics(metrics)
 
             logger.info("PIPELINE COMPLETE!")
 
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
             raise e
+
+    def generate_time_str(self) -> str:
+        now = datetime.now()
+        return now.strftime("%Y%m%d_%H%M%S")
