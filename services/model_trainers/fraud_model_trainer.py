@@ -3,7 +3,6 @@ import logging
 import xgboost as xgb
 from pandas import DataFrame
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 
 from config.config_loader import ConfigLoader
