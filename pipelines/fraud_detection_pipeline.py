@@ -10,10 +10,10 @@ from config.config_loader import ConfigLoader
 from services.evaluators.fraud_model_evaluator import FraudModelEvaluator
 from services.handlers.imbalance_handler import ImbalanceHandler
 from services.loaders.data_loader import DataLoader
-from services.model_trainers.fraud_model_trainer import FraudModelTrainer
+from services.model_trainers.fraud_model_trainer import FraudModel
 from services.preprocessors.fraud_preprocessor import FraudPreprocessor
-from services.tunner.hyper_tuner import HyperTuner
-from services.validators.credit_fraud_validator import CreditFraudValidator
+from services.tuner.hyper_tuner import HyperTuner
+from services.validators.fraud_validator import FraudValidator
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -24,10 +24,10 @@ class FraudDetectionPipeline:
         self.model_type = self.config_loader.config["model"]["type"]
 
         self.data_loader = DataLoader(self.config_loader)
-        self.data_validator = CreditFraudValidator()
+        self.data_validator = FraudValidator()
         self.preprocessor = FraudPreprocessor(self.config_loader)
         self.imbalance_handler = ImbalanceHandler(self.config_loader)
-        self.model_trainer = FraudModelTrainer(self.config_loader)
+        self.model_trainer = FraudModel(self.config_loader)
         self.evaluator = FraudModelEvaluator(self.config_loader)
         self.hyper_tuner = HyperTuner(self.config_loader)
 

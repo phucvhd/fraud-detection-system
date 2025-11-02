@@ -5,7 +5,7 @@ from pandas import DataFrame
 
 logger = logging.getLogger(__name__)
 
-class CreditFraudValidator:
+class FraudValidator:
     def __init__(self):
         self._VALID_COLUMNS = ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount", "Class"]
 

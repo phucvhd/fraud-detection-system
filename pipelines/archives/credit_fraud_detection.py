@@ -11,7 +11,7 @@ from sklearn.metrics import precision_score, recall_score, confusion_matrix, mea
 from sklearn.preprocessing import StandardScaler
 
 from services.handlers.imbalance_handler import ImbalanceHandler
-from services.validators.credit_fraud_validator import CreditFraudValidator
+from services.validators.fraud_validator import FraudValidator
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class CreditFraudDetection:
     def __init__(self, train_ratio=0.7, val_ratio=0.15, fraud_ratio=0.2, n_estimators=100):
         self.df = None
         self.fraud_ratio = fraud_ratio
-        self.validator = CreditFraudValidator()
+        self.validator = FraudValidator()
         self.imbalance_handler = ImbalanceHandler(sampling_strategy=fraud_ratio)
         self.train_ratio = train_ratio
         self.val_ratio = val_ratio
