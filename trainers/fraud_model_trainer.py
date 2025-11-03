@@ -7,6 +7,7 @@ import joblib
 import mlflow
 import pandas as pd
 import numpy as np
+from pyspark.sql import SparkSession
 from pandas import DataFrame, Series
 
 from config.config_loader import ConfigLoader
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 class FraudModelTrainer:
     def __init__(self, config_loader: ConfigLoader):
+        self.spark = SparkSession.builder.getOrCreate()
+        mlflow.set_registry_uri("databricks-uc")
         self.config_loader = config_loader
         self.raw_data_path = "../data/raw/creditcard.csv"
 
@@ -56,7 +59,8 @@ class FraudModelTrainer:
         self.best_estimator = None
 
     def load_and_split_data(self):
-        df = self.data_loader.load_data(self.raw_data_path)
+        df = self.spark.sql("SELECT * FROM workspace.fraud_detection.creditcard").toPandas()
+        df = df.drop(["_rescued_data"], axis=1)
 
         if not self.data_validator.validate_quality(df):
             raise ValueError("Data validation failed")
@@ -219,9 +223,9 @@ class FraudModelTrainer:
             raise ValueError("Model must be trained before logging")
 
         if self.model_type == 'xgboost':
-            mlflow.xgboost.log_model(self.model, name="model")
+            mlflow.xgboost.log_model(self.model, artifact_path=f"fraud_model_{self.run_id}")
         else:
-            mlflow.sklearn.log_model(self.model, name="model")
+            mlflow.sklearn.log_model(self.model, artifact_path=f"fraud_model_{self.run_id}")
 
     def train(self, x_train: DataFrame, y_train: Series) -> None:
         self.model.fit(x_train, y_train)
@@ -238,16 +242,16 @@ class FraudModelTrainer:
 
     def run(self):
         try:
-            experiment_name = f"fraud_detection_experiments_{self.run_id}"
+            experiment_name = "/Users/vu.phuc@northeastern.edu/Fraud detection experiments"
             mlflow.set_experiment(experiment_name)
 
-            with mlflow.start_run(run_name="my_experiment"):
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
                 self.load_and_split_data()
                 self.preprocess_data()
                 self.handle_imbalance()
                 self.train_model()
                 self.evaluate_model()
-                self.save_artifacts()
+                # self.save_artifacts()
                 self.save_report()
 
                 self.log_model()
