@@ -11,13 +11,13 @@ from pyspark.sql import SparkSession
 from pandas import DataFrame, Series
 
 from config.config_loader import ConfigLoader
-from services.evaluators.fraud_model_evaluator import FraudModelEvaluator
-from services.handlers.imbalance_handler import ImbalanceHandler
-from services.loaders.data_loader import DataLoader
-from services.model_trainers.fraud_model_trainer import FraudModel
-from services.preprocessors.fraud_preprocessor import FraudPreprocessor
-from services.tuner.hyper_tuner import HyperTuner
-from services.validators.fraud_validator import FraudValidator
+from src.evaluators.fraud_model_evaluator import FraudModelEvaluator
+from src.handlers.imbalance_handler import ImbalanceHandler
+from src.loaders.data_loader import DataLoader
+from src.model_trainers.fraud_model_trainer import FraudModel
+from src.preprocessors.fraud_preprocessor import FraudPreprocessor
+from src.tuner.hyper_tuner import HyperTuner
+from src.validators.fraud_validator import FraudValidator
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +26,7 @@ class FraudModelTrainer:
         self.spark = SparkSession.builder.getOrCreate()
         mlflow.set_registry_uri("databricks-uc")
         self.config_loader = config_loader
-        self.raw_data_path = "../data/raw/creditcard.csv"
+        self.raw_data_path = "../../data/raw/creditcard.csv"
 
         self.model_type = self.config_loader.config["model"]["type"]
         self.data_loader = DataLoader(self.config_loader)
@@ -38,6 +38,8 @@ class FraudModelTrainer:
         self.hyper_tuner = HyperTuner(self.config_loader)
 
         self.run_id = self.generate_time_str()
+        self.raw_data = None
+        self.raw_data_is_valid = False
         self.train_df = None
         self.val_df = None
         self.test_df = None
@@ -58,16 +60,30 @@ class FraudModelTrainer:
         self.cv_results = None
         self.best_estimator = None
 
-    def load_and_split_data(self):
-        df = self.spark.sql("SELECT * FROM workspace.fraud_detection.creditcard").toPandas()
-        df = df.drop(["_rescued_data"], axis=1)
+    def load_data(self):
+        self.raw_data = self.data_loader.load_data(self.raw_data_path)
+        return self.raw_data
 
-        if not self.data_validator.validate_quality(df):
+    def validate_data(self):
+        if self.raw_data is None:
+            raise ValueError("Raw Data must be loaded first")
+        if not self.data_validator.validate_quality(self.raw_data):
             raise ValueError("Data validation failed")
 
-        self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(df)
+        self.raw_data_is_valid = True
+        return self.raw_data
 
+    def split_data(self):
+        if not self.raw_data_is_valid:
+            raise ValueError("Data is in valid")
+
+        self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(self.raw_data)
         self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
+
+    def load_data_v2(self):
+        df = self.spark.sql("SELECT * FROM workspace.fraud_detection.creditcard").toPandas()
+        self.raw_data = df.drop(["_rescued_data"], axis=1)
+        return self.raw_data
 
     def preprocess_data(self):
         train_x, train_y = self.data_loader.seperate_fetures(self.train_df)
@@ -227,31 +243,22 @@ class FraudModelTrainer:
         else:
             mlflow.sklearn.log_model(self.model, artifact_path=f"fraud_model_{self.run_id}")
 
-    def train(self, x_train: DataFrame, y_train: Series) -> None:
-        self.model.fit(x_train, y_train)
-
-    def predict(self, x: DataFrame) -> np.ndarray:
-        if self.model is None:
-            raise ValueError("Model must be trained before prediction")
-        return self.model.predict(x)
-
-    def predict_proba(self, x: DataFrame) -> np.ndarray:
-        if self.model is None:
-            raise ValueError("Model must be trained before prediction")
-        return self.model.predict_proba(x)[:, 1]
-
     def run(self):
         try:
-            experiment_name = "/Users/vu.phuc@northeastern.edu/Fraud detection experiments"
+            logger.info("MlFlow: Training Fraud detection model")
+
+            experiment_name = "Fraud detection experiments"
             mlflow.set_experiment(experiment_name)
 
             with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
-                self.load_and_split_data()
+                self.load_data()
+                self.validate_data()
+                self.split_data()
                 self.preprocess_data()
                 self.handle_imbalance()
                 self.train_model()
                 self.evaluate_model()
-                # self.save_artifacts()
+                self.save_artifacts()
                 self.save_report()
 
                 self.log_model()
@@ -263,6 +270,60 @@ class FraudModelTrainer:
 
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
+            raise e
+
+    def run_v2(self):
+        try:
+            logger.info("Databricks: Training Fraud detection model")
+
+            experiment_name = self.config_loader.config["databricks"]["fraud_detection"]["experiment_path"]
+            mlflow.set_experiment(experiment_name)
+
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+                self.load_data_v2()
+                self.validate_data()
+                self.split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.train_model()
+                self.evaluate_model()
+                self.save_report()
+
+                self.log_model()
+                self.log_params()
+                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
+                self.log_metrics(metrics)
+
+            logger.info("PIPELINE COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise e
+
+    def hyper_tune(self):
+        try:
+            logger.info("MlFlow: Hyper tuning Fraud detection model")
+
+            experiment_name = "Fraud detection experiments"
+            mlflow.set_experiment(experiment_name)
+
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+                self.load_data()
+                self.validate_data()
+                self.split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.hyper_tuning()
+
+                self.log_model()
+                self.log_params()
+                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
+                self.log_metrics(metrics)
+
+            logger.info("HYPER TUNING COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Hyper tuning failed: {e}")
             raise e
 
     def generate_time_str(self) -> str:

@@ -120,3 +120,7 @@ tuner:
 output:
   model_path: "models/"
   report_path: "reports/"
+
+databricks:
+  fraud_detection:
+    experiment_path: "/Users/vu.phuc@northeastern.edu/Fraud detection experiments"
