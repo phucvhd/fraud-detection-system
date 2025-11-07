@@ -1,6 +1,6 @@
 import os
 
-from pipelines.archives.credit_fraud_detection import CreditFraudDetection
+from archives.credit_fraud_detection import CreditFraudDetection
 
 credit_fraud_detection = CreditFraudDetection()
 

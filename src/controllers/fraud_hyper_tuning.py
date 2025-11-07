@@ -1,7 +1,7 @@
 import logging
 
 from config.config_loader import ConfigLoader
-from src.trainers.fraud_model_trainer import FraudModelTrainer
+from src.models.fraud_model import FraudModel
 
 logging.basicConfig(
         level=logging.INFO,
@@ -10,5 +10,5 @@ logging.basicConfig(
 config_loader = ConfigLoader()
 
 if __name__ == '__main__':
-    trainer = FraudModelTrainer(config_loader=config_loader)
+    trainer = FraudModel(config_loader=config_loader)
     trainer.hyper_tune()
