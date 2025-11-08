@@ -110,7 +110,10 @@ class FraudModel:
     def hyper_tuning_v2(self):
         search = self.hyper_tuner.init_tuner()
         search_method = type(search).__name__
-        mlflow.log_param("search_method", type(search).__name__)
+        mlflow.log_param("imbalance_sampler", type(self.imbalance_handler.sampler).__name__)
+        mlflow.log_param("sampling_strategy", self.imbalance_handler.sampling_strategy)
+        mlflow.log_param("model_type", self.model_type)
+        mlflow.log_param("search_method", search_method)
 
         params = None
         if search_method == "GridSearchCV":
@@ -172,7 +175,7 @@ class FraudModel:
 
         logger.info(f"Best CV Recall: {self.best_score}")
         logger.info(f"Validation Recall: {val_recall}")
-        logger.info(f"Best Parameters: {self.best_score}")
+        logger.info(f"Best Parameters: {self.best_params}")
 
 
     def evaluate_model(self):
@@ -293,7 +296,7 @@ class FraudModel:
         else:
             mlflow.sklearn.log_model(self.model, name=f"fraud_model_{self.run_id}")
 
-    def run(self):
+    def run_mlflow_experiment(self):
         try:
             logger.info("MlFlow: Training Fraud detection model")
 
@@ -319,7 +322,7 @@ class FraudModel:
             logger.error(f"Pipeline failed: {e}")
             raise e
 
-    def hyper_tune(self):
+    def run_mlflow_hyper_tune(self):
         try:
             logger.info("MlFlow: Hyper tuning Fraud detection model")
             mlflow.set_experiment("Fraud detection hyper tuning")

@@ -22,5 +22,5 @@ os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret
 os.environ["MLFLOW_S3_ENDPOINT_URL"] = s3_endpoint
 
 if __name__ == '__main__':
-    trainer = FraudModel(config_loader=config_loader)
-    trainer.run()
+    fraud_model = FraudModel(config_loader=config_loader)
+    fraud_model.run_mlflow_hyper_tune()
