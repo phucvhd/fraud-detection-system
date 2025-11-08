@@ -49,7 +49,6 @@ class FraudModelEvaluator:
             "recall": recall,
             "f1": f1,
             "pr_auc": pr_auc,
-            "confusion_matrix": cm,
             "tp": tp,
             "fp": fp,
             "tn": tn,

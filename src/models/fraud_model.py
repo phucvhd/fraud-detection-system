@@ -6,13 +6,14 @@ from pathlib import Path
 import joblib
 import mlflow
 import pandas as pd
-from pyspark.sql import SparkSession
+from sklearn.metrics import recall_score, precision_score, f1_score, average_precision_score
 
 from config.config_loader import ConfigLoader
 from src.evaluators.fraud_model_evaluator import FraudModelEvaluator
 from src.handlers.imbalance_handler import ImbalanceHandler
 from src.loaders.data_loader import DataLoader
 from src.preprocessors.fraud_preprocessor import FraudPreprocessor
+from src.trainers.fraud_model_trainer import FraudModelTrainer
 from src.tuner.hyper_tuner import HyperTuner
 from src.validators.fraud_validator import FraudValidator
 
@@ -20,8 +21,8 @@ logger = logging.getLogger(__name__)
 
 class FraudModel:
     def __init__(self, config_loader: ConfigLoader):
-        self.spark = SparkSession.builder.getOrCreate()
-        mlflow.set_registry_uri("databricks-uc")
+        mlflow.set_tracking_uri("http://localhost:5001")
+        mlflow.set_registry_uri("http://localhost:5001")
         self.config_loader = config_loader
         self.raw_data_path = "../../data/raw/creditcard.csv"
 
@@ -30,7 +31,7 @@ class FraudModel:
         self.data_validator = FraudValidator()
         self.preprocessor = FraudPreprocessor(self.config_loader)
         self.imbalance_handler = ImbalanceHandler(self.config_loader)
-        self.model_trainer = FraudModel(self.config_loader)
+        self.model_trainer = FraudModelTrainer(self.config_loader)
         self.evaluator = FraudModelEvaluator(self.config_loader)
         self.hyper_tuner = HyperTuner(self.config_loader)
 
@@ -77,11 +78,6 @@ class FraudModel:
         self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(self.raw_data)
         self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
 
-    def load_data_v2(self):
-        df = self.spark.sql("SELECT * FROM workspace.fraud_detection.creditcard").toPandas()
-        self.raw_data = df.drop(["_rescued_data"], axis=1)
-        return self.raw_data
-
     def preprocess_data(self):
         train_x, train_y = self.data_loader.seperate_fetures(self.train_df)
         val_x, val_y = self.data_loader.seperate_fetures(self.val_df)
@@ -111,6 +107,33 @@ class FraudModel:
         logger.info(f"Best {self.model_type} params: {self.best_params}")
         logger.info(f"Best CV recall: {self.best_score:.4f}")
 
+    def hyper_tuning_v2(self):
+        search = self.hyper_tuner.init_tuner()
+        search_method = type(search).__name__
+        mlflow.log_param("search_method", type(search).__name__)
+
+        params = None
+        if search_method == "GridSearchCV":
+            params = search.param_grid
+        elif search_method == "RandomizedSearchCV":
+            params = search.param_distributions
+        for param, values in params.items():
+            mlflow.log_param(param, values)
+
+        search.fit(self.train_x_balanced, self.train_y_balanced)
+        for idx in range(len(search.cv_results_['params'])):
+            with mlflow.start_run(run_name=f"cv_trial_{idx}", nested=True):
+                params = search.cv_results_['params'][idx]
+                mlflow.log_params(params)
+
+                for key in search.cv_results_.keys():
+                    if 'test' in key:
+                        mlflow.log_metric(key, search.cv_results_[key][idx])
+
+        self.best_estimator = search.best_estimator_
+        self.best_params = search.best_params_
+        self.best_score = search.best_score_
+
     def train_model(self):
         self.model_trainer.train(self.train_x_balanced, self.train_y_balanced)
         self.model = self.model_trainer.model
@@ -121,6 +144,36 @@ class FraudModel:
             return
         score = self.best_estimator.score(self.val_x_processed, self.val_y)
         logger.info(f"Best estimator score: {score}")
+
+    def evaluate_hyper_tune_v2(self):
+        if self.best_estimator is None:
+            logger.error("Best estimator is not identified")
+            return
+
+        y_pred = self.best_estimator.predict(self.val_x_processed)
+        y_pred_proba = self.best_estimator.predict_proba(self.val_x_processed)[:, 1]
+
+        val_recall = recall_score(self.val_y, y_pred)
+        val_precision = precision_score(self.val_y, y_pred)
+        val_f1 = f1_score(self.val_y, y_pred)
+        val_pr_auc = average_precision_score(self.val_y, y_pred_proba)
+
+        mlflow.log_params({f"best_{k}": v for k, v in self.best_params.items()})
+        mlflow.log_metric("val_recall", val_recall)
+        mlflow.log_metric("val_precision", val_precision)
+        mlflow.log_metric("val_f1", val_f1)
+        mlflow.log_metric("val_pr_auc", val_pr_auc)
+        mlflow.log_metric("cv_best_recall", self.best_score)
+
+        if self.model_type == 'xgboost':
+            mlflow.xgboost.log_model(self.best_estimator, f"best_model_{self.run_id}")
+        else:
+            mlflow.sklearn.log_model(self.best_estimator, f"best_model_{self.run_id}")
+
+        logger.info(f"Best CV Recall: {self.best_score}")
+        logger.info(f"Validation Recall: {val_recall}")
+        logger.info(f"Best Parameters: {self.best_score}")
+
 
     def evaluate_model(self):
         self.val_metrics = self.evaluator.evaluate(
@@ -236,9 +289,9 @@ class FraudModel:
             raise ValueError("Model must be trained before logging")
 
         if self.model_type == 'xgboost':
-            mlflow.xgboost.log_model(self.model, artifact_path=f"fraud_model_{self.run_id}")
+            mlflow.xgboost.log_model(self.model, name=f"fraud_model_{self.run_id}")
         else:
-            mlflow.sklearn.log_model(self.model, artifact_path=f"fraud_model_{self.run_id}")
+            mlflow.sklearn.log_model(self.model, name=f"fraud_model_{self.run_id}")
 
     def run(self):
         try:
@@ -255,41 +308,10 @@ class FraudModel:
                 self.handle_imbalance()
                 self.train_model()
                 self.evaluate_model()
-                self.save_artifacts()
-                self.save_report()
 
                 self.log_model()
                 self.log_params()
-                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
-                self.log_metrics(metrics)
-
-            logger.info("PIPELINE COMPLETE!")
-
-        except Exception as e:
-            logger.error(f"Pipeline failed: {e}")
-            raise e
-
-    def run_v2(self):
-        try:
-            logger.info("Databricks: Training Fraud detection model")
-
-            experiment_name = self.config_loader.config["databricks"]["fraud_detection"]["experiment_path"]
-            mlflow.set_experiment(experiment_name)
-
-            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
-                self.load_data_v2()
-                self.validate_data()
-                self.split_data()
-                self.preprocess_data()
-                self.handle_imbalance()
-                self.train_model()
-                self.evaluate_model()
-                self.save_report()
-
-                self.log_model()
-                self.log_params()
-                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
-                self.log_metrics(metrics)
+                self.log_metrics(self.val_metrics)
 
             logger.info("PIPELINE COMPLETE!")
 
@@ -300,22 +322,16 @@ class FraudModel:
     def hyper_tune(self):
         try:
             logger.info("MlFlow: Hyper tuning Fraud detection model")
+            mlflow.set_experiment("Fraud detection hyper tuning")
 
-            experiment_name = "Fraud detection experiments"
-            mlflow.set_experiment(experiment_name)
-
-            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+            with mlflow.start_run(run_name=f"Tuning_{self.run_id}"):
                 self.load_data()
                 self.validate_data()
                 self.split_data()
                 self.preprocess_data()
                 self.handle_imbalance()
-                self.hyper_tuning()
-
-                self.log_model()
-                self.log_params()
-                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
-                self.log_metrics(metrics)
+                self.hyper_tuning_v2()
+                self.evaluate_hyper_tune_v2()
 
             logger.info("HYPER TUNING COMPLETE!")
 
