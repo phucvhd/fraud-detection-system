@@ -57,8 +57,86 @@ services:
     volumes:
       - redis-data:/data
 
+  mlflow-db:
+    image: postgres:14
+    container_name: mlflow-postgres
+    environment:
+      POSTGRES_USER: mlflow
+      POSTGRES_PASSWORD: mlflow
+      POSTGRES_DB: mlflow
+    volumes:
+      - mlflow-db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - mlflow-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U mlflow" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: mlflow-minio
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    command: server /data --console-address ":9001"
+    networks:
+      - mlflow-network
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  mlflow-server:
+    image: python:3.10-slim
+    container_name: mlflow-server
+    depends_on:
+      mlflow-db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./mlflow-artifacts:/mlflow/artifacts
+    networks:
+      - mlflow-network
+    command: >
+      bash -c "
+      pip install mlflow psycopg2-binary boto3 &&
+      mlflow server 
+      --backend-store-uri postgresql://mlflow:mlflow@mlflow-db:5432/mlflow
+      --default-artifact-root s3://mlflow/artifacts
+      --host 0.0.0.0
+      --port 5000
+      "
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5001/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 volumes:
   kafka-data:
   zookeeper-data:
   zookeeper-logs:
   redis-data:
+  mlflow-db-data:
+  minio-data:
+
+networks:
+  mlflow-network:
+    driver: bridge

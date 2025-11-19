@@ -1,40 +1,44 @@
 import json
 import logging
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 
 import joblib
 import mlflow
 import pandas as pd
-import numpy as np
-from pandas import DataFrame, Series
+from sklearn.metrics import recall_score, precision_score, f1_score, average_precision_score
 
 from config.config_loader import ConfigLoader
-from services.evaluators.fraud_model_evaluator import FraudModelEvaluator
-from services.handlers.imbalance_handler import ImbalanceHandler
-from services.loaders.data_loader import DataLoader
-from services.model_trainers.fraud_model_trainer import FraudModel
-from services.preprocessors.fraud_preprocessor import FraudPreprocessor
-from services.tuner.hyper_tuner import HyperTuner
-from services.validators.fraud_validator import FraudValidator
+from src.evaluators.fraud_model_evaluator import FraudModelEvaluator
+from src.handlers.imbalance_handler import ImbalanceHandler
+from src.loaders.data_loader import DataLoader
+from src.preprocessors.fraud_preprocessor import FraudPreprocessor
+from src.trainers.fraud_model_trainer import FraudModelTrainer
+from src.tuner.hyper_tuner import HyperTuner
+from src.validators.fraud_validator import FraudValidator
 
 logger = logging.getLogger(__name__)
 
-class FraudModelTrainer:
+class FraudModel:
     def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
-        self.raw_data_path = "../data/raw/creditcard.csv"
+        self.raw_data_path = "../../data/raw/creditcard.csv"
 
+        mlflow.set_tracking_uri(self.config_loader.config["mlflow"]["url"])
+        mlflow.set_registry_uri(self.config_loader.config["mlflow"]["url"])
         self.model_type = self.config_loader.config["model"]["type"]
         self.data_loader = DataLoader(self.config_loader)
         self.data_validator = FraudValidator()
         self.preprocessor = FraudPreprocessor(self.config_loader)
         self.imbalance_handler = ImbalanceHandler(self.config_loader)
-        self.model_trainer = FraudModel(self.config_loader)
+        self.model_trainer = FraudModelTrainer(self.config_loader)
         self.evaluator = FraudModelEvaluator(self.config_loader)
         self.hyper_tuner = HyperTuner(self.config_loader)
 
         self.run_id = self.generate_time_str()
+        self.raw_data = None
+        self.raw_data_is_valid = False
         self.train_df = None
         self.val_df = None
         self.test_df = None
@@ -55,14 +59,24 @@ class FraudModelTrainer:
         self.cv_results = None
         self.best_estimator = None
 
-    def load_and_split_data(self):
-        df = self.data_loader.load_data(self.raw_data_path)
+    def load_data(self):
+        self.raw_data = self.data_loader.load_data(self.raw_data_path)
+        return self.raw_data
 
-        if not self.data_validator.validate_quality(df):
+    def validate_data(self):
+        if self.raw_data is None:
+            raise ValueError("Raw Data must be loaded first")
+        if not self.data_validator.validate_quality(self.raw_data):
             raise ValueError("Data validation failed")
 
-        self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(df)
+        self.raw_data_is_valid = True
+        return self.raw_data
 
+    def split_data(self):
+        if not self.raw_data_is_valid:
+            raise ValueError("Data is in valid")
+
+        self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(self.raw_data)
         self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
 
     def preprocess_data(self):
@@ -94,6 +108,39 @@ class FraudModelTrainer:
         logger.info(f"Best {self.model_type} params: {self.best_params}")
         logger.info(f"Best CV recall: {self.best_score:.4f}")
 
+    def hyper_tuning_v2(self):
+        search = self.hyper_tuner.init_tuner()
+        search_method = type(search).__name__
+
+        mlflow.log_param("imbalance_sampler", type(self.imbalance_handler.sampler).__name__)
+        mlflow.log_param("sampling_strategy", self.imbalance_handler.sampling_strategy)
+        mlflow.log_param("model_type", self.model_type)
+        mlflow.log_param("search_method", search_method)
+        # mlflow.log_param("n_iter", search.n_iter)
+        mlflow.log_param("cv", search.cv)
+
+        params = None
+        if search_method == "GridSearchCV":
+            params = search.param_grid
+        elif search_method == "RandomizedSearchCV":
+            params = search.param_distributions
+        for param, values in params.items():
+            mlflow.log_param(param, values)
+
+        search.fit(self.train_x_balanced, self.train_y_balanced)
+        for idx in range(len(search.cv_results_['params'])):
+            with mlflow.start_run(run_name=f"cv_trial_{idx}", nested=True):
+                params = search.cv_results_['params'][idx]
+                mlflow.log_params(params)
+
+                for key in search.cv_results_.keys():
+                    if 'test' in key:
+                        mlflow.log_metric(key, search.cv_results_[key][idx])
+
+        self.best_estimator = search.best_estimator_
+        self.best_params = search.best_params_
+        self.best_score = search.best_score_
+
     def train_model(self):
         self.model_trainer.train(self.train_x_balanced, self.train_y_balanced)
         self.model = self.model_trainer.model
@@ -104,6 +151,36 @@ class FraudModelTrainer:
             return
         score = self.best_estimator.score(self.val_x_processed, self.val_y)
         logger.info(f"Best estimator score: {score}")
+
+    def evaluate_hyper_tune_v2(self):
+        if self.best_estimator is None:
+            logger.error("Best estimator is not identified")
+            return
+
+        y_pred = self.best_estimator.predict(self.val_x_processed)
+        y_pred_proba = self.best_estimator.predict_proba(self.val_x_processed)[:, 1]
+
+        val_recall = recall_score(self.val_y, y_pred)
+        val_precision = precision_score(self.val_y, y_pred)
+        val_f1 = f1_score(self.val_y, y_pred)
+        val_pr_auc = average_precision_score(self.val_y, y_pred_proba)
+
+        mlflow.log_params({f"best_{k}": v for k, v in self.best_params.items()})
+        mlflow.log_metric("val_recall", val_recall)
+        mlflow.log_metric("val_precision", val_precision)
+        mlflow.log_metric("val_f1", val_f1)
+        mlflow.log_metric("val_pr_auc", val_pr_auc)
+        mlflow.log_metric("cv_best_recall", self.best_score)
+
+        if self.model_type == 'xgboost':
+            mlflow.xgboost.log_model(self.best_estimator, f"best_model_{self.run_id}")
+        else:
+            mlflow.sklearn.log_model(self.best_estimator, f"best_model_{self.run_id}")
+
+        logger.info(f"Best CV Recall: {self.best_score}")
+        logger.info(f"Validation Recall: {val_recall}")
+        logger.info(f"Best Parameters: {self.best_params}")
+
 
     def evaluate_model(self):
         self.val_metrics = self.evaluator.evaluate(
@@ -219,46 +296,54 @@ class FraudModelTrainer:
             raise ValueError("Model must be trained before logging")
 
         if self.model_type == 'xgboost':
-            mlflow.xgboost.log_model(self.model, name="model")
+            mlflow.xgboost.log_model(self.model, name=f"fraud_model_{self.run_id}")
         else:
-            mlflow.sklearn.log_model(self.model, name="model")
+            mlflow.sklearn.log_model(self.model, name=f"fraud_model_{self.run_id}")
 
-    def train(self, x_train: DataFrame, y_train: Series) -> None:
-        self.model.fit(x_train, y_train)
-
-    def predict(self, x: DataFrame) -> np.ndarray:
-        if self.model is None:
-            raise ValueError("Model must be trained before prediction")
-        return self.model.predict(x)
-
-    def predict_proba(self, x: DataFrame) -> np.ndarray:
-        if self.model is None:
-            raise ValueError("Model must be trained before prediction")
-        return self.model.predict_proba(x)[:, 1]
-
-    def run(self):
+    def run_mlflow_experiment(self):
         try:
-            experiment_name = f"fraud_detection_experiments_{self.run_id}"
+            logger.info("MlFlow: Training Fraud detection model")
+
+            experiment_name = "Fraud detection experiments"
             mlflow.set_experiment(experiment_name)
 
-            with mlflow.start_run(run_name="my_experiment"):
-                self.load_and_split_data()
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+                self.load_data()
+                self.validate_data()
+                self.split_data()
                 self.preprocess_data()
                 self.handle_imbalance()
                 self.train_model()
                 self.evaluate_model()
-                self.save_artifacts()
-                self.save_report()
 
                 self.log_model()
                 self.log_params()
-                metrics = {k: v for k, v in self.val_metrics.items() if k != 'confusion_matrix'}
-                self.log_metrics(metrics)
+                self.log_metrics(self.val_metrics)
 
             logger.info("PIPELINE COMPLETE!")
 
         except Exception as e:
             logger.error(f"Pipeline failed: {e}")
+            raise e
+
+    def run_mlflow_hyper_tune(self):
+        try:
+            logger.info("MlFlow: Hyper tuning Fraud detection model")
+            mlflow.set_experiment("Fraud detection hyper tuning")
+
+            with mlflow.start_run(run_name=f"Tuning_{self.run_id}"):
+                self.load_data()
+                self.validate_data()
+                self.split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.hyper_tuning_v2()
+                self.evaluate_hyper_tune_v2()
+
+            logger.info("HYPER TUNING COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Hyper tuning failed: {e}")
             raise e
 
     def generate_time_str(self) -> str:

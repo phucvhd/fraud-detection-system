@@ -1,6 +1,6 @@
 import os
 
-from pipelines.archives.credit_fraud_model_tunner import CreditFraudModelTunner
+from archives.credit_fraud_model_tunner import CreditFraudModelTunner
 
 model_tunner = CreditFraudModelTunner("../data/creditcard.csv")
 

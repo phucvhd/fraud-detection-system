@@ -9,7 +9,7 @@ from config.config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
 
-class FraudModel:
+class FraudModelTrainer:
     def __init__(self, config_loader: ConfigLoader):
         self.model_config = config_loader.config["model"]
         self.model = None

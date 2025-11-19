@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 class FraudDetectionPipeline:
     def __init__(self):
-        self.config_loader = ConfigLoader(path="../config/application.yaml")
+        self.config_loader = ConfigLoader(path="../../config/application.yaml")
         self.model_type = self.config_loader.config["model"]["type"]
 
         self.data_loader = DataLoader(self.config_loader)
