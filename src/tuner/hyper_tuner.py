@@ -20,7 +20,7 @@ class HyperTuner:
         self.random_search_params = self.param_grid["random_search"]
         self.evaluation = config_loader.config["evaluation"]
         self.scoring = self._init_scoring()
-        
+
     def _init_scoring(self):
         scoring = {}
         for metric in self.evaluation["metrics"]:
@@ -77,30 +77,3 @@ class HyperTuner:
         except Exception as e:
             logger.error("Unexpected error: ", e)
             raise e
-
-    # def grid_search(self) -> GridSearchCV:
-    #     try:
-    #         model_type = self.model_config["type"]
-    #         logger.info(f"Initiate Grid search for {model_type} model")
-    #         match model_type:
-    #             case "decision_tree":
-    #                 estimator = DecisionTreeClassifier(class_weight="balanced")
-    #             case "random_forest":
-    #                 estimator = RandomForestClassifier()
-    #             case "xgboost":
-    #                 estimator = XGBClassifier()
-    #             case _:
-    #                 raise Exception("Model type is invalid")
-    #
-    #         grid = GridSearchCV(
-    #             estimator=estimator,
-    #             param_grid=self.grid_search_params,
-    #             scoring=self.scoring,
-    #             cv=5,
-    #             n_jobs=-1,
-    #             verbose=2
-    #         )
-    #         return grid
-    #     except Exception as e:
-    #         logger.error("Unexpected error: ", e)
-    #         raise e

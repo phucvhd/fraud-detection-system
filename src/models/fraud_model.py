@@ -1,6 +1,7 @@
 import json
 import logging
 from datetime import datetime
+from io import StringIO
 from pathlib import Path
 
 import joblib
@@ -21,11 +22,11 @@ logger = logging.getLogger(__name__)
 
 class FraudModel:
     def __init__(self, config_loader: ConfigLoader):
-        mlflow.set_tracking_uri("http://localhost:5001")
-        mlflow.set_registry_uri("http://localhost:5001")
         self.config_loader = config_loader
         self.raw_data_path = "../../data/raw/creditcard.csv"
 
+        mlflow.set_tracking_uri(self.config_loader.config["mlflow"]["url"])
+        mlflow.set_registry_uri(self.config_loader.config["mlflow"]["url"])
         self.model_type = self.config_loader.config["model"]["type"]
         self.data_loader = DataLoader(self.config_loader)
         self.data_validator = FraudValidator()
@@ -110,10 +111,13 @@ class FraudModel:
     def hyper_tuning_v2(self):
         search = self.hyper_tuner.init_tuner()
         search_method = type(search).__name__
+
         mlflow.log_param("imbalance_sampler", type(self.imbalance_handler.sampler).__name__)
         mlflow.log_param("sampling_strategy", self.imbalance_handler.sampling_strategy)
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("search_method", search_method)
+        # mlflow.log_param("n_iter", search.n_iter)
+        mlflow.log_param("cv", search.cv)
 
         params = None
         if search_method == "GridSearchCV":
