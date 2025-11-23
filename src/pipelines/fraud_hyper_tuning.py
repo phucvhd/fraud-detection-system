@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from config.config_loader import ConfigLoader
-from src.models.fraud_model import FraudModel
+from src.pipelines.fraud_pipeline import FraudPipeline
 
 logging.basicConfig(
         level=logging.INFO,
@@ -22,5 +22,5 @@ os.environ["AWS_SECRET_ACCESS_KEY"] = aws_secret
 os.environ["MLFLOW_S3_ENDPOINT_URL"] = s3_endpoint
 
 if __name__ == '__main__':
-    fraud_model = FraudModel(config_loader=config_loader)
-    fraud_model.run_mlflow_hyper_tune()
+    fraud_pipeline = FraudPipeline(config_loader=config_loader)
+    fraud_pipeline.run_mlflow_hyper_tune()
