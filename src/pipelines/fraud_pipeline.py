@@ -20,7 +20,7 @@ from src.validators.fraud_validator import FraudValidator
 
 logger = logging.getLogger(__name__)
 
-class FraudModel:
+class FraudPipeline:
     def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
         self.raw_data_path = "../../data/raw/creditcard.csv"
