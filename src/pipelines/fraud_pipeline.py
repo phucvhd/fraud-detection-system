@@ -1,18 +1,17 @@
 import json
 import logging
 from datetime import datetime
-from io import StringIO
 from pathlib import Path
 
 import joblib
 import mlflow
 import pandas as pd
-from sklearn.metrics import recall_score, precision_score, f1_score, average_precision_score
 
 from config.config_loader import ConfigLoader
 from src.evaluators.fraud_model_evaluator import FraudModelEvaluator
 from src.handlers.imbalance_handler import ImbalanceHandler
 from src.loaders.data_loader import DataLoader
+from src.loaders.s3_loader import S3Client
 from src.preprocessors.fraud_preprocessor import FraudPreprocessor
 from src.trainers.fraud_model_trainer import FraudModelTrainer
 from src.tuner.hyper_tuner import HyperTuner
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 class FraudPipeline:
     def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
-        self.raw_data_path = "../../data/raw/creditcard.csv"
+        self.raw_data_path = self.config_loader.config["pipeline"]["data"]["raw"]["local"]
 
         mlflow.set_tracking_uri(self.config_loader.config["mlflow"]["url"])
         mlflow.set_registry_uri(self.config_loader.config["mlflow"]["url"])
@@ -63,6 +62,32 @@ class FraudPipeline:
         self.raw_data = self.data_loader.load_data(self.raw_data_path)
         return self.raw_data
 
+    def load_data_v2(self):
+        s3_key = self.config_loader.config["pipeline"]["data"]["raw"]["s3"]
+        s3_client = S3Client(self.config_loader)
+        local_path = Path(self.raw_data_path)
+        try:
+            if local_path.exists():
+                logger.info(f"Local file found: {local_path}")
+                self.raw_data = pd.read_csv(local_path)
+                logger.info(f"Loaded from local")
+                return self.raw_data
+            else:
+                logger.info(f"Local file not found: {local_path}")
+                logger.info(f"Downloading from S3: {s3_key}")
+
+                local_path.parent.mkdir(parents=True, exist_ok=True)
+
+                s3_client.download_file(s3_key, str(local_path))
+
+                self.raw_data = pd.read_csv(local_path)
+                logger.info(f"Downloaded and loaded from S3")
+                return self.raw_data
+
+        except Exception as e:
+            logger.error(f"✗ Failed to load data: {e}")
+            raise
+
     def validate_data(self):
         if self.raw_data is None:
             raise ValueError("Raw Data must be loaded first")
@@ -77,7 +102,7 @@ class FraudPipeline:
             raise ValueError("Data is in valid")
 
         self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(self.raw_data)
-        self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
+        # self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
 
     def preprocess_data(self):
         train_x, train_y = self.data_loader.seperate_fetures(self.train_df)
@@ -116,7 +141,6 @@ class FraudPipeline:
         mlflow.log_param("sampling_strategy", self.imbalance_handler.sampling_strategy)
         mlflow.log_param("model_type", self.model_type)
         mlflow.log_param("search_method", search_method)
-        # mlflow.log_param("n_iter", search.n_iter)
         mlflow.log_param("cv", search.cv)
 
         params = None
@@ -157,20 +181,21 @@ class FraudPipeline:
             logger.error("Best estimator is not identified")
             return
 
-        y_pred = self.best_estimator.predict(self.val_x_processed)
-        y_pred_proba = self.best_estimator.predict_proba(self.val_x_processed)[:, 1]
-
-        val_recall = recall_score(self.val_y, y_pred)
-        val_precision = precision_score(self.val_y, y_pred)
-        val_f1 = f1_score(self.val_y, y_pred)
-        val_pr_auc = average_precision_score(self.val_y, y_pred_proba)
+        self.val_metrics = self.evaluator.evaluate(
+            self.best_estimator,
+            self.val_x_processed,
+            self.val_y
+        )
 
         mlflow.log_params({f"best_{k}": v for k, v in self.best_params.items()})
-        mlflow.log_metric("val_recall", val_recall)
-        mlflow.log_metric("val_precision", val_precision)
-        mlflow.log_metric("val_f1", val_f1)
-        mlflow.log_metric("val_pr_auc", val_pr_auc)
-        mlflow.log_metric("cv_best_recall", self.best_score)
+        mlflow.log_metrics({
+            "val_recall": self.val_metrics.recall,
+            "val_precision": self.val_metrics.precision,
+            "val_f1": self.val_metrics.f1,
+            "val_pr_auc": self.val_metrics.pr_auc,
+            "cv_best_recall": self.best_score
+        })
+        self.log_metrics(self.val_metrics)
 
         if self.model_type == 'xgboost':
             mlflow.xgboost.log_model(self.best_estimator, f"best_model_{self.run_id}")
@@ -178,7 +203,7 @@ class FraudPipeline:
             mlflow.sklearn.log_model(self.best_estimator, f"best_model_{self.run_id}")
 
         logger.info(f"Best CV Recall: {self.best_score}")
-        logger.info(f"Validation Recall: {val_recall}")
+        logger.info(f"Validation Recall: {self.val_metrics.recall}")
         logger.info(f"Best Parameters: {self.best_params}")
 
 
@@ -200,6 +225,14 @@ class FraudPipeline:
             self.test_x_processed,
             self.test_y
         )
+
+    def evaluate_model_v2(self):
+        self.test_metrics = self.evaluator.evaluate(
+            self.best_estimator,
+            self.test_x_processed,
+            self.test_y
+        )
+        self.log_metrics(self.test_metrics)
 
     def save_artifacts(self):
         now = datetime.now()
@@ -309,6 +342,32 @@ class FraudPipeline:
 
             with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
                 self.load_data()
+                self.validate_data()
+                self.split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.train_model()
+                self.evaluate_model()
+
+                self.log_model()
+                self.log_params()
+                self.log_metrics(self.val_metrics)
+
+            logger.info("PIPELINE COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise e
+
+    def run_mlflow_experiment_v2(self):
+        try:
+            logger.info(f"Running experiment_{self.run_id}")
+
+            experiment_name = "Fraud detection experiments"
+            mlflow.set_experiment(experiment_name)
+
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+                self.load_data_v2()
                 self.validate_data()
                 self.split_data()
                 self.preprocess_data()

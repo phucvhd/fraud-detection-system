@@ -24,8 +24,8 @@ fraud_generator:
   fraud_rate: 0.005
 
 model:
-  train_ratio: 0.8
-  val_ratio: 0.19
+  train_ratio: 0.7
+  val_ratio: 0.15
   type: "decision_tree"
   params:
     random_forest:
@@ -131,3 +131,22 @@ databricks:
 
 mlflow:
   url: "http://localhost:5001"
+
+#minio:
+#  root_user: "minioadmin"
+#  root_password: "minioadmin"
+#  s3_endpoint_url: "http://localhost:9001"
+
+aws:
+  credentials:
+    access_key_id: ${AWS_ACCESS_KEY_ID}
+    secret_access_key: ${AWS_SECRET_ACCESS_KEY}
+  region: ${AWS_DEFAULT_REGION}
+  s3:
+    bucket_name: ${AWS_BUCKET_NAME}
+
+pipeline:
+  data:
+    raw:
+      local: "../../data/raw/creditcard.csv"
+      s3: "raw/creditcard.csv"
