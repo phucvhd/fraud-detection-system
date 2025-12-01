@@ -16,8 +16,7 @@ class HyperTuner:
         self.hyperparameter_tuning = config_loader.config["tuner"]["hyperparameter_tuning"]
         self.param_grid = config_loader.config["tuner"]["param_grid"]
         self.tuner_strategy = self.hyperparameter_tuning["strategy"]
-        self.grid_search_params = self.param_grid["grid_search"]
-        self.random_search_params = self.param_grid["random_search"]
+        self.search_params = self.param_grid[self.tuner_strategy]
         self.evaluation = config_loader.config["evaluation"]
         self.scoring = self._init_scoring()
 
@@ -51,7 +50,7 @@ class HyperTuner:
             if self.tuner_strategy == "grid_search":
                 search = GridSearchCV(
                     estimator=estimator,
-                    param_grid=self.grid_search_params,
+                    param_grid=self.search_params,
                     scoring=self.scoring,
                     refit=self.evaluation["primary_metric"],
                     cv=self.hyperparameter_tuning["cv"],
@@ -61,8 +60,8 @@ class HyperTuner:
             elif self.tuner_strategy == "random_search":
                 search = RandomizedSearchCV(
                     estimator=estimator,
-                    param_distributions=self.random_search_params,
-                    n_iter=self.hyperparameter_tuning["n_iter"],
+                    param_distributions=self.search_params[model_type],
+                    n_iter=self.search_params["n_iter"],
                     scoring=self.scoring,
                     refit=self.evaluation["primary_metric"],
                     cv=self.hyperparameter_tuning["cv"],
