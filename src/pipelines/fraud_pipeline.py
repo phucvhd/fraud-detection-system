@@ -137,11 +137,13 @@ class FraudPipeline:
         search = self.hyper_tuner.init_tuner()
         search_method = type(search).__name__
 
-        mlflow.log_param("imbalance_sampler", type(self.imbalance_handler.sampler).__name__)
-        mlflow.log_param("sampling_strategy", self.imbalance_handler.sampling_strategy)
-        mlflow.log_param("model_type", self.model_type)
-        mlflow.log_param("search_method", search_method)
-        mlflow.log_param("cv", search.cv)
+        mlflow.log_params({
+            "imbalance_sampler": type(self.imbalance_handler.sampler).__name__,
+            "sampling_strategy": self.imbalance_handler.sampling_strategy,
+            "model_type": self.model_type,
+            "search_method": search_method,
+            "cv": search.cv
+        })
 
         params = None
         if search_method == "GridSearchCV":
@@ -188,13 +190,7 @@ class FraudPipeline:
         )
 
         mlflow.log_params({f"best_{k}": v for k, v in self.best_params.items()})
-        mlflow.log_metrics({
-            "val_recall": self.val_metrics.recall,
-            "val_precision": self.val_metrics.precision,
-            "val_f1": self.val_metrics.f1,
-            "val_pr_auc": self.val_metrics.pr_auc,
-            "cv_best_recall": self.best_score
-        })
+        mlflow.log_metric("cv_best_recall", self.best_score)
         self.log_metrics(self.val_metrics)
 
         if self.model_type == 'xgboost':
@@ -203,7 +199,7 @@ class FraudPipeline:
             mlflow.sklearn.log_model(self.best_estimator, f"best_model_{self.run_id}")
 
         logger.info(f"Best CV Recall: {self.best_score}")
-        logger.info(f"Validation Recall: {self.val_metrics.recall}")
+        logger.info(f"Validation Recall: {self.val_metrics["recall"]}")
         logger.info(f"Best Parameters: {self.best_params}")
 
 
@@ -392,6 +388,26 @@ class FraudPipeline:
 
             with mlflow.start_run(run_name=f"Tuning_{self.run_id}"):
                 self.load_data()
+                self.validate_data()
+                self.split_data()
+                self.preprocess_data()
+                self.handle_imbalance()
+                self.hyper_tuning()
+                self.evaluate_hyper_tune()
+
+            logger.info("HYPER TUNING COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Hyper tuning failed: {e}")
+            raise e
+
+    def run_mlflow_hyper_tune_v2(self):
+        try:
+            logger.info("MlFlow: Hyper tuning Fraud detection model - V2")
+            mlflow.set_experiment("Fraud detection hyper tuning")
+
+            with mlflow.start_run(run_name=f"Tuning_{self.run_id}"):
+                self.load_data_v2()
                 self.validate_data()
                 self.split_data()
                 self.preprocess_data()
