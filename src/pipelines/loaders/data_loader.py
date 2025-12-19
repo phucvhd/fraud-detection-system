@@ -46,7 +46,24 @@ class DataLoader:
             logger.error("Unexpected error: ", e)
             raise e
 
-    def seperate_fetures(self, df: DataFrame):
+    def split_train_data_v2(self, df: DataFrame):
+        try:
+            logger.info("Splitting data by time v2")
+            df_sorted = df.sort_values("Time").reset_index(drop=True)
+
+            train_size = int(self.train_ratio * len(df_sorted))
+
+            train_data = df_sorted[:train_size]
+            val_data = df_sorted[:train_size]
+
+            logger.info(f"Training: {len(train_data)}")
+            logger.info(f"Validation: {len(val_data)}")
+            return train_data, val_data
+        except Exception as e:
+            logger.error("Unexpected error: ", e)
+            raise e
+
+    def separate_features(self, df: DataFrame):
         try:
             data_x = df.drop("Class", axis=1)
             data_y = df["Class"]
