@@ -8,14 +8,15 @@ import mlflow
 import pandas as pd
 
 from config.config_loader import ConfigLoader
-from src.evaluators.fraud_model_evaluator import FraudModelEvaluator
+from src.pipelines.evaluators.fraud_model_evaluator import FraudModelEvaluator
 from src.handlers.imbalance_handler import ImbalanceHandler
-from src.loaders.data_loader import DataLoader
-from src.loaders.s3_loader import S3Client
-from src.preprocessors.fraud_preprocessor import FraudPreprocessor
-from src.trainers.fraud_model_trainer import FraudModelTrainer
-from src.tuner.hyper_tuner import HyperTuner
-from src.validators.fraud_validator import FraudValidator
+from src.pipelines.feature_engineering.fraud_feature_engineering import FraudFeatureEngineering
+from src.pipelines.loaders.data_loader import DataLoader
+from src.pipelines.loaders.s3_loader import S3Client
+from src.pipelines.preprocessors.fraud_preprocessor import FraudPreprocessor
+from src.pipelines.trainers.fraud_model_trainer import FraudModelTrainer
+from src.pipelines.tuner.hyper_tuner import HyperTuner
+from src.pipelines.validators.fraud_validator import FraudValidator
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +35,7 @@ class FraudPipeline:
         self.model_trainer = FraudModelTrainer(self.config_loader)
         self.evaluator = FraudModelEvaluator(self.config_loader)
         self.hyper_tuner = HyperTuner(self.config_loader)
+        self.feature_engineering = FraudFeatureEngineering(self.config_loader)
 
         self.run_id = self.generate_time_str()
         self.raw_data = None
@@ -42,9 +44,12 @@ class FraudPipeline:
         self.val_df = None
         self.test_df = None
         self.model = None
+        self.test_x = None
         self.test_y = None
-        self.val_y = None
+        self.train_x = None
         self.train_y = None
+        self.val_x = None
+        self.val_y = None
         self.test_x_processed = None
         self.val_x_processed = None
         self.train_x_processed = None
@@ -99,15 +104,20 @@ class FraudPipeline:
 
     def split_data(self):
         if not self.raw_data_is_valid:
-            raise ValueError("Data is in valid")
+            raise ValueError("Data is invalid")
 
         self.train_df, self.val_df, self.test_df = self.data_loader.split_train_data(self.raw_data)
-        # self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
+
+    def split_data_v2(self):
+        if not self.raw_data_is_valid:
+            raise ValueError("Data is invalid")
+
+        self.train_df, self.val_df = self.data_loader.split_train_data_v2(self.raw_data)
 
     def preprocess_data(self):
-        train_x, train_y = self.data_loader.seperate_fetures(self.train_df)
-        val_x, val_y = self.data_loader.seperate_fetures(self.val_df)
-        test_x, test_y = self.data_loader.seperate_fetures(self.test_df)
+        train_x, train_y = self.data_loader.separate_features(self.train_df)
+        val_x, val_y = self.data_loader.separate_features(self.val_df)
+        test_x, test_y = self.data_loader.separate_features(self.test_df)
 
         self.train_x_processed = self.preprocessor.fit_transform(train_x)
         self.val_x_processed = self.preprocessor.transform(val_x)
@@ -116,6 +126,27 @@ class FraudPipeline:
         self.train_y = train_y
         self.val_y = val_y
         self.test_y = test_y
+
+        logger.info(f"Preprocessing complete")
+
+    def separate_features(self):
+        self.train_x, self.train_y = self.data_loader.separate_features(self.train_df)
+        self.val_x, self.val_y = self.data_loader.separate_features(self.val_df)
+
+    def feature_process(self):
+        if self.train_x is None:
+            raise ValueError("train_x is invalid")
+
+        self.train_x = self.feature_engineering.process(self.train_x)
+        self.val_x = self.feature_engineering.process(self.val_x)
+
+    def preprocess_data_v2(self):
+        is_invalid = any(v is None for v in [self.train_x, self.train_y, self.val_x, self.val_y])
+        if is_invalid:
+            raise ValueError("Data is in valid")
+
+        self.train_x_processed = self.preprocessor.fit_transform(self.train_x)
+        self.val_x_processed = self.preprocessor.transform(self.val_x)
 
         logger.info(f"Preprocessing complete")
 
@@ -130,6 +161,7 @@ class FraudPipeline:
         self.best_score = search.best_score_
         self.cv_results = search.cv_results_
         self.best_estimator = search.best_estimator_
+
         logger.info(f"Best {self.model_type} params: {self.best_params}")
         logger.info(f"Best CV recall: {self.best_score:.4f}")
 
@@ -223,12 +255,17 @@ class FraudPipeline:
         )
 
     def evaluate_model_v2(self):
-        self.test_metrics = self.evaluator.evaluate(
-            self.best_estimator,
-            self.test_x_processed,
-            self.test_y
+        self.val_metrics = self.evaluator.evaluate(
+            self.model,
+            self.val_x_processed,
+            self.val_y
         )
-        self.log_metrics(self.test_metrics)
+
+        self.optimal_threshold = self.evaluator.find_optimal_threshold(
+            self.model,
+            self.val_x_processed,
+            self.val_y
+        )
 
     def save_artifacts(self):
         now = datetime.now()
@@ -359,7 +396,7 @@ class FraudPipeline:
         try:
             logger.info(f"Running experiment_{self.run_id}")
 
-            experiment_name = "Fraud detection experiments"
+            experiment_name = "Fraud detection experiments v2"
             mlflow.set_experiment(experiment_name)
 
             with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
@@ -370,6 +407,34 @@ class FraudPipeline:
                 self.handle_imbalance()
                 self.train_model()
                 self.evaluate_model()
+
+                self.log_model()
+                self.log_params()
+                self.log_metrics(self.val_metrics)
+
+            logger.info("PIPELINE COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise e
+
+    def run_mlflow_experiment_v3(self):
+        try:
+            logger.info(f"Running experiment_{self.run_id}")
+
+            experiment_name = "Fraud detection experiments v3"
+            mlflow.set_experiment(experiment_name)
+
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+                self.load_data_v2()
+                self.validate_data()
+                self.split_data_v2()
+                self.separate_features()
+                self.feature_process()
+                self.preprocess_data_v2()
+                self.handle_imbalance()
+                self.train_model()
+                self.evaluate_model_v2()
 
                 self.log_model()
                 self.log_params()

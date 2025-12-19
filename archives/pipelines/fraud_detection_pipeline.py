@@ -62,9 +62,9 @@ class FraudDetectionPipeline:
         self.data_loader.save_splits(self.train_df, self.val_df, self.test_df)
 
     def preprocess_data(self):
-        train_x, train_y = self.data_loader.seperate_fetures(self.train_df)
-        val_x, val_y = self.data_loader.seperate_fetures(self.val_df)
-        test_x, test_y = self.data_loader.seperate_fetures(self.test_df)
+        train_x, train_y = self.data_loader.separate_features(self.train_df)
+        val_x, val_y = self.data_loader.separate_features(self.val_df)
+        test_x, test_y = self.data_loader.separate_features(self.test_df)
 
         self.train_x_processed = self.preprocessor.fit_transform(train_x)
         self.val_x_processed = self.preprocessor.transform(val_x)
