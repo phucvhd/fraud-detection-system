@@ -149,6 +149,7 @@ databricks:
 
 mlflow:
   url: "http://localhost:5001"
+  bucket_path: "s3://mlflow/artifacts/3/models"
 
 aws:
   credentials:
@@ -163,3 +164,9 @@ pipeline:
     raw:
       local: "../../data/raw/creditcard.csv"
       s3: "raw/creditcard.csv"
+
+api:
+  fraud_detection:
+    model:
+      type: "random_forest"
+      id: "m-6a52c09913e74a22aece0cbae63c1e5b"
