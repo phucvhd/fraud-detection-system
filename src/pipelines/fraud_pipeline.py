@@ -74,7 +74,7 @@ class FraudPipeline:
         try:
             if local_path.exists():
                 logger.info(f"Local file found: {local_path}")
-                self.raw_data = pd.read_csv(local_path)
+                self.raw_data = self.data_loader.load_data(self.raw_data_path)
                 logger.info(f"Loaded from local")
                 return self.raw_data
             else:

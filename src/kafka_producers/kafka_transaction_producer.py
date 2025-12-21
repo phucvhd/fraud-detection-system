@@ -56,14 +56,14 @@ class KafkaTransactionProducer:
                 self.stats["total_sent"] += 1
 
     def _calculate_delay(self, current_time: float) -> float:
-        if self.kafka_producer_config.burst_mode:
-            seconds_in_cycle = current_time % (self.kafka_producer_config.burst_interval_seconds * 2)
-            in_burst = seconds_in_cycle < self.kafka_producer_config.burst_interval_seconds
+        if self.kafka_producer_config["burst_mode"]:
+            seconds_in_cycle = current_time % (self.kafka_producer_config["burst_interval_seconds"] * 2)
+            in_burst = seconds_in_cycle < self.kafka_producer_config["burst_interval_seconds"]
 
-            rate = (self.kafka_producer_config.transactions_per_second * self.kafka_producer_config.burst_multiplier
-                    if in_burst else self.kafka_producer_config.transactions_per_second)
+            rate = (self.kafka_producer_config["transactions_per_second"] * self.kafka_producer_config["burst_multiplier"]
+                    if in_burst else self.kafka_producer_config["transactions_per_second"])
         else:
-            rate = self.kafka_producer_config.transactions_per_second
+            rate = self.kafka_producer_config["transactions_per_second"]
 
         with self._stats_lock:
             self.stats["current_rate"] = rate
@@ -75,7 +75,7 @@ class KafkaTransactionProducer:
         start_time = time.time()
         interval_time = 0
 
-        logger.info(f"Starting load to topic '{self.topic}' at {self.kafka_producer_config.transactions_per_second} TPS")
+        logger.info(f"Starting load to topic '{self.topic}' at {self.kafka_producer_config["transactions_per_second"]} TPS")
 
         try:
             while self.running:

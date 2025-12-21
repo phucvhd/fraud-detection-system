@@ -4,7 +4,10 @@ import mlflow
 import pandas as pd
 
 from config.config_loader import ConfigLoader
+from config.kafka_config import KafkaConfigLoader
 from src.pipelines.feature_engineering.fraud_feature_engineering import FraudFeatureEngineering
+from src.pipelines.preprocessors.fraud_preprocessor import FraudPreprocessor
+from src.services.kafka_service import KafkaService
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +19,9 @@ class FraudService:
         self.bucket_path = config_loader.config["mlflow"]["bucket_path"]
         self.model = self._load_model_by_run_id(model_id)
         self.fraud_features = FraudFeatureEngineering(config_loader)
+        self.preprocessor = FraudPreprocessor(config_loader)
+        kafka_config_loader = KafkaConfigLoader(config_loader)
+        self.kafka_service = KafkaService(kafka_config_loader)
 
     def _load_model_by_run_id(self, model_id: str):
         try:
@@ -38,14 +44,14 @@ class FraudService:
     def predict_transaction(self, transaction: dict) -> dict:
         transaction_df = pd.DataFrame([transaction])
         transaction_id = transaction["transaction_id"]
-        transaction_df = transaction_df.drop("transaction_id", axis=1)
 
         transaction_df_processed = self.fraud_features.process(transaction_df)
+        transaction_df_cleaned = self.preprocessor.clean_features(transaction_df_processed)
 
-        prediction = self.model.predict(transaction_df_processed)[0]
+        prediction = self.model.predict(transaction_df_cleaned)[0]
 
         try:
-            probabilities = self.model.predict_proba(transaction_df_processed)
+            probabilities = self.model.predict_proba(transaction_df_cleaned)
             fraud_probability = float(probabilities[0, 1])
         except AttributeError:
             fraud_probability = float(prediction)

@@ -1,6 +1,6 @@
 import logging
 
-from services.kafka_producers.kafka_transaction_producer import KafkaTransactionProducer
+from src.kafka_producers.kafka_transaction_producer import KafkaTransactionProducer
 
 logger = logging.getLogger(__name__)
 

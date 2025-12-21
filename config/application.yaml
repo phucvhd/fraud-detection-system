@@ -1,11 +1,10 @@
 kafka:
   producer:
-    transaction_per_second: 100
+    transactions_per_second: 100
     burst_mode: true
     burst_interval_seconds: 30
     burst_multiplier: 5.0
     bootstrap_servers: "localhost:9092"
-    topic: "transactions"
     client_id: "fraud-detection-producer"
     compression_type: "snappy"
     linger_ms: 10
@@ -22,6 +21,11 @@ kafka:
 fraud_generator:
   max_transaction_time: 172800
   fraud_rate: 0.005
+  topic: "transactions"
+  transactions_per_second: 100
+  burst_mode: true
+  burst_interval_seconds: 30
+  burst_multiplier: 5.0
 
 model:
   train_ratio: 0.8
@@ -170,3 +174,6 @@ api:
     model:
       type: "random_forest"
       id: "m-6a52c09913e74a22aece0cbae63c1e5b"
+    kafka:
+      topic: "transactions"
+      decision_topic: "transaction-decisions"

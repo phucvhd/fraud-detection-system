@@ -95,7 +95,7 @@ class FraudSyntheticDataGenerator:
     def generate_normal_transaction(self, time_interval: float):
         try:
             data = {
-                "transaction_id": uuid.uuid4(),
+                "transaction_id": str(uuid.uuid4()),
                 "Time": time_interval
             }
 
@@ -132,7 +132,7 @@ class FraudSyntheticDataGenerator:
     def generate_fraudulent_transaction(self, time_interval: float):
         try:
             data = {
-                "transaction_id": uuid.uuid4(),
+                "transaction_id": str(uuid.uuid4()),
                 "Time": time_interval
             }
 
