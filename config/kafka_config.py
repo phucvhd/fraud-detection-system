@@ -22,8 +22,11 @@ class KafkaConfigLoader:
             "client.id": self.consumer_client_id
         })
         self.producer = Producer({
-            "bootstrap.servers": self.producer_bootstrap_servers,
-            "client.id": self.producer_client_id
+            "bootstrap.servers": self.kafka_producer_config["bootstrap_servers"],
+            "compression.type": self.kafka_producer_config["compression_type"],
+            "linger.ms": self.kafka_producer_config["linger_ms"],
+            "batch.size": self.kafka_producer_config["batch_size"],
+            "acks": self.kafka_producer_config["acks"]
         })
         self.admin = AdminClient({
             "bootstrap.servers": self.producer_bootstrap_servers

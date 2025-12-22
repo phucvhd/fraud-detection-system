@@ -4,7 +4,7 @@ from src.kafka_consumers.kafka_listener import KafkaListener
 
 
 class FraudListener:
-    def __init__(self, config_loader: ConfigLoader, handler):
+    def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
         self.fraud_detection_config = config_loader.config["api"]["fraud_detection"]
 

@@ -18,7 +18,7 @@ fraud_detection_config = config_loader.config["api"]["fraud_detection"]
 model_type = fraud_detection_config["model"]["type"]
 model_id = fraud_detection_config["model"]["id"]
 fraud_service = FraudService(config_loader, model_type, model_id)
-fraud_listener = FraudListener(config_loader, fraud_service.fraud_handler)
+fraud_listener = FraudListener(config_loader)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

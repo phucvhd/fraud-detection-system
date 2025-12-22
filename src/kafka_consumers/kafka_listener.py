@@ -7,18 +7,7 @@ class KafkaListener:
     def __init__(self, topic, handler, kafka_config_loader: KafkaConfigLoader):
         self.topic = topic
         self.handler = handler
-
-        self.kafka_consumer_config = kafka_config_loader.kafka_consumer_config
-        self.consumer_bootstrap_servers = self.kafka_consumer_config["bootstrap_servers"]
-        self.consumer_group_id = self.kafka_consumer_config["group_id"]
-        self.consumer_client_id = self.kafka_consumer_config["client_id"]
-        self.consumer = Consumer({
-            "bootstrap.servers": self.consumer_bootstrap_servers,
-            "enable.auto.commit": False,
-            'auto.offset.reset': 'earliest',
-            "group.id": self.consumer_group_id,
-            'client.id': self.consumer_client_id
-        })
+        self.consumer = kafka_config_loader.consumer
 
     def start(self):
         self.consumer.subscribe([self.topic])

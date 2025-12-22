@@ -6,7 +6,7 @@ from starlette.responses import JSONResponse
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
 from src.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
-from src.kafka_producers.kafka_transaction_producer import KafkaTransactionProducer
+from src.kafka_producers.transaction_producer import TransactionProducer
 from src.pipelines.loaders.data_loader import DataLoader
 
 router = APIRouter(prefix="/transaction")
@@ -62,7 +62,7 @@ def generate_fraud_transaction(time_interval: int):
 def inject_transactions(duration_seconds: int):
     kafka_config_loader = KafkaConfigLoader(config_loader)
 
-    transaction_producer = KafkaTransactionProducer(
+    transaction_producer = TransactionProducer(
         topic=config_loader.config["fraud_generator"]["topic"],
         kafka_config_loader=kafka_config_loader,
         data_generator=generator.generate_transaction
