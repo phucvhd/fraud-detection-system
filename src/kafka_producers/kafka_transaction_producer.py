@@ -94,12 +94,10 @@ class KafkaTransactionProducer:
 
                 message = json.dumps(transaction).encode("utf-8")
 
-                partition_key = str(uuid.uuid4())
-
                 self.producer.produce(
                     topic=self.topic,
                     value=message,
-                    key=partition_key.encode("utf-8"),
+                    key=transaction["transaction_id"],
                     callback=self._delivery_callback
                 )
 

@@ -2,8 +2,7 @@ import json
 import logging
 import time
 
-from confluent_kafka import Producer, Consumer, KafkaError
-from confluent_kafka.admin import AdminClient
+from confluent_kafka import KafkaError
 from confluent_kafka.cimpl import NewTopic
 
 from config.kafka_config import KafkaConfigLoader
@@ -13,27 +12,10 @@ logger = logging.getLogger(__name__)
 class KafkaService:
     def __init__(self, kafka_config_loader: KafkaConfigLoader):
         self.kafka_producer_config = kafka_config_loader.kafka_producer_config
-        self.producer_bootstrap_servers = self.kafka_producer_config["bootstrap_servers"]
-        self.producer_client_id = self.kafka_producer_config["client_id"]
-
         self.kafka_consumer_config = kafka_config_loader.kafka_consumer_config
-        self.consumer_bootstrap_servers = self.kafka_consumer_config["bootstrap_servers"]
-        self.consumer_group_id = self.kafka_consumer_config["group_id"]
-        self.consumer_client_id = self.kafka_consumer_config["client_id"]
-        self.consumer = Consumer({
-            "bootstrap.servers": self.consumer_bootstrap_servers,
-            "enable.auto.commit": False,
-            'auto.offset.reset': 'earliest',
-            "group.id": self.consumer_group_id,
-            'client.id': self.consumer_client_id
-        })
-        self.producer = Producer({
-            "bootstrap.servers": self.producer_bootstrap_servers,
-            "client.id": self.producer_client_id
-        })
-        self.admin = AdminClient({
-                "bootstrap.servers": self.producer_bootstrap_servers
-            })
+        self.consumer = kafka_config_loader.consumer
+        self.producer = kafka_config_loader.producer
+        self.admin = kafka_config_loader.admin
 
     def list_all_topics(self):
         try:

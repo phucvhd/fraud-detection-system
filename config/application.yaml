@@ -147,10 +147,6 @@ output:
   model_path: "models/"
   report_path: "reports/"
 
-databricks:
-  fraud_detection:
-    experiment_path: "/Users/vu.phuc@northeastern.edu/Fraud detection experiments"
-
 mlflow:
   url: "http://localhost:5001"
   bucket_path: "s3://mlflow/artifacts/3/models"
@@ -175,5 +171,7 @@ api:
       type: "random_forest"
       id: "m-6a52c09913e74a22aece0cbae63c1e5b"
     kafka:
+      listener_toggle: true
       topic: "transactions"
       decision_topic: "transaction-decisions"
+      fraud_alerts_topic: "fraud-alerts"

@@ -1,3 +1,4 @@
+import json
 import logging
 
 import mlflow
@@ -20,8 +21,9 @@ class FraudService:
         self.model = self._load_model_by_run_id(model_id)
         self.fraud_features = FraudFeatureEngineering(config_loader)
         self.preprocessor = FraudPreprocessor(config_loader)
-        kafka_config_loader = KafkaConfigLoader(config_loader)
-        self.kafka_service = KafkaService(kafka_config_loader)
+        self.kafka_config_loader = KafkaConfigLoader(config_loader)
+        self.kafka_service = KafkaService(self.kafka_config_loader)
+        self.fraud_detection_config = config_loader.config["api"]["fraud_detection"]
 
     def _load_model_by_run_id(self, model_id: str):
         try:
@@ -66,6 +68,19 @@ class FraudService:
         }
 
         return result
+
+    def fraud_handler(self, msg_value):
+        kafka_service = KafkaService(self.kafka_config_loader)
+
+        transaction = json.loads(msg_value.decode("utf-8"))
+        decision = self.predict_transaction(transaction)
+
+        if decision["is_fraud"]:
+            fraud_alerts_topic = self.fraud_detection_config["kafka"]["fraud_alerts_topic"]
+            kafka_service.send_message(fraud_alerts_topic, decision["transaction_id"], str(decision))
+        else:
+            decision_topic = self.fraud_detection_config["kafka"]["decision_topic"]
+            kafka_service.send_message(decision_topic, decision["transaction_id"], str(decision))
 
     def _get_confidence_level(self, probability: float) -> str:
         if probability >= 0.8 or probability <= 0.2:

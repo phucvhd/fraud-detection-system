@@ -9,7 +9,7 @@ import pandas as pd
 
 from config.config_loader import ConfigLoader
 from src.pipelines.evaluators.fraud_model_evaluator import FraudModelEvaluator
-from src.handlers.imbalance_handler import ImbalanceHandler
+from src.pipelines.handlers.imbalance_handler import ImbalanceHandler
 from src.pipelines.feature_engineering.fraud_feature_engineering import FraudFeatureEngineering
 from src.pipelines.loaders.data_loader import DataLoader
 from src.pipelines.loaders.s3_loader import S3Client
