@@ -1,12 +1,13 @@
-<h1>Fraud Detection Model</h1>
+## Fraud Detection Model
 
-<h2>Resources</h2>
-Datasets: Credit Card Fraud Detection - Kaggle
+### Resources
+- **Dataset**: [Credit Card Fraud Detection – Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)
 
-<h2>Architecture</h2>
-![Description](assets/service-architecture.png)
+### Architecture
+![Service Architecture](assets/service-architecture.png)
 
-<h2>Components</h2>
+### Components
+
 1. **EDA**
    - Data shape, memory usage
    - Basic statistics, total missing value, distribution
@@ -14,22 +15,27 @@ Datasets: Credit Card Fraud Detection - Kaggle
    - Time-based pattern analysis
    - Feature correlation
    - Fraud pattern discovery
+
 2. **Preprocessing**
    - Load
    - Validate integrity, consistency, missing value, imbalance
    - Split
    - Scaling
-3. **Imbalance handling**
+
+3. **Imbalance Handling**
    - SMOTE
-4. **Model training**
+
+4. **Model Training**
    - Decision Tree
-   - Random forest
+   - Random Forest
    - XGBoost
-5. **Model evaluation**
+
+5. **Model Evaluation**
    - Precision
    - Recall
-   - F1 score
-   - pr auc
-6. **Hyper tuning**
-   - Grid search
-   - Random search
+   - F1 Score
+   - PR AUC
+
+6. **Hyperparameter Tuning**
+   - Grid Search
+   - Random Search
