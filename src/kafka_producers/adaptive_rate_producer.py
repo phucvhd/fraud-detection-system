@@ -1,10 +1,10 @@
 import logging
 
-from services.kafka_producers.kafka_transaction_producer import KafkaTransactionProducer
+from src.kafka_producers.transaction_producer import TransactionProducer
 
 logger = logging.getLogger(__name__)
 
-class AdaptiveRateProducer(KafkaTransactionProducer):
+class AdaptiveRateProducer(TransactionProducer):
     def __init__(self, *args, min_rate: float = 10, max_rate: float = 1000, **kwargs):
         super().__init__(*args, **kwargs)
         self.min_rate = min_rate

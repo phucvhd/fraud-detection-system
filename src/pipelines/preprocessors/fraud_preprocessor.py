@@ -88,3 +88,15 @@ class FraudPreprocessor:
         except Exception as e:
             logger.error("Unexpected error: ", e)
             raise e
+
+    def clean_features(self, df: DataFrame):
+        try:
+            features_to_scale = self.preprocessor_config["features_to_scale"]
+            features_to_keep = self.preprocessor_config["features_to_keep"]
+            all_features = features_to_scale + features_to_keep
+
+            cleaned_df = df[all_features]
+            return cleaned_df
+        except Exception as e:
+            logger.error("Unexpected error: ", e)
+            raise e

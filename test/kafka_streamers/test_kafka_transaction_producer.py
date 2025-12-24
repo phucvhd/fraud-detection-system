@@ -5,9 +5,8 @@ from confluent_kafka import Consumer
 
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
-from services.kafka_producers.kafka_transaction_producer import KafkaTransactionProducer
-
-from services.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
+from src.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
+from src.kafka_producers.transaction_producer import TransactionProducer
 
 config_loader = ConfigLoader(path="application-test.yaml")
 test_kafka_config_loader = KafkaConfigLoader(config_loader)
@@ -26,7 +25,7 @@ consumer = Consumer({
 })
 
 def test_start_loading():
-    transaction_producer = KafkaTransactionProducer(
+    transaction_producer = TransactionProducer(
         topic=kafka_config_loader.kafka_producer_config["topic"],
         kafka_config_loader=kafka_config_loader,
         data_generator=fraud_generator.generate_transaction

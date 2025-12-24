@@ -9,7 +9,7 @@ import pandas as pd
 
 from config.config_loader import ConfigLoader
 from src.pipelines.evaluators.fraud_model_evaluator import FraudModelEvaluator
-from src.handlers.imbalance_handler import ImbalanceHandler
+from src.pipelines.handlers.imbalance_handler import ImbalanceHandler
 from src.pipelines.feature_engineering.fraud_feature_engineering import FraudFeatureEngineering
 from src.pipelines.loaders.data_loader import DataLoader
 from src.pipelines.loaders.s3_loader import S3Client
@@ -74,7 +74,7 @@ class FraudPipeline:
         try:
             if local_path.exists():
                 logger.info(f"Local file found: {local_path}")
-                self.raw_data = pd.read_csv(local_path)
+                self.raw_data = self.data_loader.load_data(self.raw_data_path)
                 logger.info(f"Loaded from local")
                 return self.raw_data
             else:

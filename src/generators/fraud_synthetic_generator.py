@@ -1,5 +1,6 @@
 import logging
 import random
+import uuid
 
 import numpy as np
 import pandas as pd
@@ -93,7 +94,10 @@ class FraudSyntheticDataGenerator:
 
     def generate_normal_transaction(self, time_interval: float):
         try:
-            data = {"Time": time_interval}
+            data = {
+                "transaction_id": str(uuid.uuid4()),
+                "Time": time_interval
+            }
 
             amount_params = self.params["normal"]["amount"]
             data["Amount"] = np.random.lognormal(
@@ -127,7 +131,10 @@ class FraudSyntheticDataGenerator:
 
     def generate_fraudulent_transaction(self, time_interval: float):
         try:
-            data = {"Time": time_interval}
+            data = {
+                "transaction_id": str(uuid.uuid4()),
+                "Time": time_interval
+            }
 
             fraud_ranges = self.params["fraud"]["amount_ranges"]
             fraud_type = np.random.choice(
