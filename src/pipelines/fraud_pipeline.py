@@ -68,8 +68,6 @@ class FraudPipeline:
         return self.raw_data
 
     def load_data_v2(self):
-        s3_key = self.config_loader.config["pipeline"]["data"]["raw"]["s3"]
-        s3_client = S3Client(self.config_loader)
         local_path = Path(self.raw_data_path)
         try:
             if local_path.exists():
@@ -78,6 +76,8 @@ class FraudPipeline:
                 logger.info(f"Loaded from local")
                 return self.raw_data
             else:
+                s3_key = self.config_loader.config["pipeline"]["data"]["raw"]["s3"]
+                s3_client = S3Client(self.config_loader)
                 logger.info(f"Local file not found: {local_path}")
                 logger.info(f"Downloading from S3: {s3_key}")
 
@@ -90,7 +90,7 @@ class FraudPipeline:
                 return self.raw_data
 
         except Exception as e:
-            logger.error(f"✗ Failed to load data: {e}")
+            logger.error(f"Failed to load data: {e}")
             raise
 
     def validate_data(self):
@@ -474,8 +474,10 @@ class FraudPipeline:
             with mlflow.start_run(run_name=f"Tuning_{self.run_id}"):
                 self.load_data_v2()
                 self.validate_data()
-                self.split_data()
-                self.preprocess_data()
+                self.split_data_v2()
+                self.separate_features()
+                self.feature_process()
+                self.preprocess_data_v2()
                 self.handle_imbalance()
                 self.hyper_tuning_v2()
                 self.evaluate_hyper_tune_v2()
