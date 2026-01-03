@@ -4,7 +4,7 @@ kafka:
     burst_mode: true
     burst_interval_seconds: 30
     burst_multiplier: 5.0
-    bootstrap_servers: "localhost:9092"
+    bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
     client_id: "fraud-detection-producer"
     compression_type: "snappy"
     linger_ms: 10
@@ -12,7 +12,7 @@ kafka:
     acks: 1
 
   consumer:
-    bootstrap_servers: "localhost:9092"
+    bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
     group_id: "fraud-detection-consumer-group"
     auto_offset_reset: "earliest"
     enable_auto_commit: true
@@ -159,16 +159,14 @@ aws:
   s3:
     bucket_name: ${AWS_BUCKET_NAME}
 
-pipeline:
-  data:
-    raw:
-      local: "../../data/raw/creditcard.csv"
-      s3: "raw/creditcard.csv"
+data:
+  raw:
+    local: "../../data/raw/creditcard.csv"
+    s3: "raw/creditcard.csv"
 
 api:
   fraud_detection:
     model:
-      type: "random_forest"
       id: "m-6a52c09913e74a22aece0cbae63c1e5b"
     kafka:
       listener_toggle: true

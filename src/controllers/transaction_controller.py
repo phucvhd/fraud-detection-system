@@ -1,5 +1,6 @@
 import time
 
+import pandas as pd
 from fastapi import APIRouter
 from starlette.responses import JSONResponse
 
@@ -7,13 +8,15 @@ from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
 from src.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
 from src.kafka_producers.transaction_producer import TransactionProducer
-from src.pipelines.loaders.data_loader import DataLoader
+from src.clients.s3_client import S3Client
 
 router = APIRouter(prefix="/transaction")
 
 config_loader = ConfigLoader()
-data_loader = DataLoader(config_loader)
-source_data = data_loader.load_data("data/raw/creditcard.csv")
+s3_client = S3Client(config_loader)
+key = config_loader.config["data"]["raw"]["s3"]
+bucket = config_loader.config["aws"]["s3"]["bucket_name"]
+source_data = pd.read_csv(f"s3://{bucket}/{key}")
 generator = FraudSyntheticDataGenerator(config_loader, source_data)
 
 @router.get("/{time_interval}", response_model=dict)

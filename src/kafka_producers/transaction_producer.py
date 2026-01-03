@@ -56,7 +56,7 @@ class TransactionProducer:
         start_time = time.time()
         interval_time = 0
 
-        logger.info(f"Starting load to topic '{self.topic}' at {self.kafka_producer_config["transactions_per_second"]} TPS")
+        logger.info(f"Starting load to topic '{self.topic}' at {self.kafka_producer_config['transactions_per_second']} TPS")
 
         try:
             while self.running:

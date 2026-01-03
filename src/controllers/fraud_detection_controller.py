@@ -14,9 +14,7 @@ config_loader = ConfigLoader()
 kafka_config_loader = KafkaConfigLoader(config_loader)
 
 fraud_detection_config = config_loader.config["api"]["fraud_detection"]
-model_type = fraud_detection_config["model"]["type"]
-model_id = fraud_detection_config["model"]["id"]
-fraud_service = FraudService(config_loader, model_type, model_id)
+fraud_service = FraudService(config_loader)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,7 @@ def validate_fraud(request: dict):
             content=decision
         )
     except Exception as e:
-        logger.error(f"Failed to validate transaction_id: {request["transaction_id"]}", e)
+        logger.error(f"Failed to validate transaction_id: {request['transaction_id']}", e)
         return JSONResponse(
             status_code=400,
             content={f"message: Failed to validate transaction"}
