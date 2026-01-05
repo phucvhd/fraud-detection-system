@@ -1,0 +1,40 @@
+# Exclude everything except src and config
+*
+
+# But include these
+!src/
+!config/
+!requirements.txt
+!Dockerfile
+!.dockerignore
+
+# Exclude cache and compiled files
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# Exclude IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Exclude other directories
+archives/
+assets/
+data/
+pipelines/
+runs/
+scripts/
+test/
+docker-compose.yaml
+README.md
+
