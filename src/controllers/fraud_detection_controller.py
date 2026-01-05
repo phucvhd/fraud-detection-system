@@ -27,9 +27,12 @@ def validate_fraud(request: dict):
         if decision["is_fraud"]:
             fraud_alerts_topic = fraud_detection_config["kafka"]["fraud_alerts_topic"]
             kafka_service.send_message(fraud_alerts_topic, decision["transaction_id"], str(decision))
-        else:
-            decision_topic = fraud_detection_config["kafka"]["decision_topic"]
-            kafka_service.send_message(decision_topic, decision["transaction_id"], str(decision))
+            logger.info(f"An alert for transaction={decision['transaction_id']} has been sent to {fraud_alerts_topic}")
+
+        decision_topic = fraud_detection_config["kafka"]["decision_topic"]
+        kafka_service.send_message(decision_topic, decision["transaction_id"], str(decision))
+        logger.info(f"Decision for transaction={decision['transaction_id']} has been sent to {decision_topic}")
+
         return JSONResponse(
             status_code=200,
             content=decision
