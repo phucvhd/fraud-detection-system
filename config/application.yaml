@@ -64,18 +64,10 @@ preprocessor:
     - Time
     - Amount
     - hour_of_day
-    - hour_risk_score
-    - time_normalized
-    - amount_z_score
-    - is_small_amount
-    - is_very_small_amount
-    - is_large_amount
-    - is_very_large_amount
-    - distance_from_fraud_median
-    - distance_from_fraud_mean
-    - in_small_fraud_zone
-    - in_large_fraud_zone
-    - fraud_amount_similarity
+    - day_period
+    - time_since_start
+    - log_amount
+    - amount_scaled
   features_to_scale:
     - V1
     - V2
@@ -167,7 +159,7 @@ data:
 api:
   fraud_detection:
     model:
-      id: "m-6a52c09913e74a22aece0cbae63c1e5b"
+      id: "fraud-rf-smote-20260105-081438"
     kafka:
       listener_toggle: true
       topic: "transactions"

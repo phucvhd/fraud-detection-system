@@ -1,6 +1,7 @@
 import io
 import json
 import logging
+import tarfile
 
 import joblib
 import numpy as np
@@ -23,15 +24,27 @@ class FraudService:
         self.fraud_detection_config = config_loader.config["api"]["fraud_detection"]
         self.s3_client = S3Client(config_loader)
         self.model = self._load_model(model_id)
-        self.fraud_amount_median = 9.25
-        self.fraud_amount_mean = 122.21
 
     def _load_model(self, model_id: str):
         try:
             logger.info(f"Loading model with id={model_id}")
-            obj = self.s3_client.get_object(f"{model_id}/artifacts/model.pkl")
+            obj = self.s3_client.get_object(f"models/{model_id}.tar.gz")
             bytestream = io.BytesIO(obj)
-            model = joblib.load(bytestream)
+
+            tar = tarfile.open(fileobj=bytestream, mode="r:gz")
+
+            model_joblib = None
+            for member in tar.getmembers():
+                if member.name.endswith("model.joblib"):
+                    model_joblib = member
+                    break
+
+            if model_joblib is None:
+                raise FileNotFoundError("model.joblib not found inside tar.gz")
+
+            model_file = tar.extractfile(model_joblib)
+            model = joblib.load(model_file)
+
             logger.info(f"Model id={model_id} load successfully")
             return model
         except Exception as e:
@@ -89,7 +102,6 @@ class FraudService:
             return "low"
 
     def get_hour_risk_score(self, hour):
-        # Based on your 4-hour period analysis
         if 0 <= hour < 4:
             return 0.003968
         elif 4 <= hour < 8:
@@ -108,51 +120,42 @@ class FraudService:
     logger.info("Helper functions defined")
 
     def add_time_features(self, data_x):
-        logger.debug("Add time features")
+        logger.info("Add time-based features")
         data_x = data_x.copy()
+        if "Time" in data_x.columns:
+            logger.debug("Add time features")
+            data_x = data_x.copy()
 
-        data_x['hour_of_day'] = ((data_x['Time'] % 86400) / 3600).astype(int)
-        logger.debug("Added hour_of_day")
+            data_x["hour_of_day"] = (data_x["Time"] / 3600) % 24
+            logger.debug("Added hour_of_day")
 
-        data_x['hour_risk_score'] = data_x['hour_of_day'].apply(self.get_hour_risk_score)
-        logger.debug("Added hour_risk_score")
+            hour = (data_x["Time"] / 3600) % 24
+            data_x["day_period"] = pd.cut(hour, bins=[0, 6, 12, 18, 24],
+                                     labels=[0, 1, 2, 3], include_lowest=True)
+            logger.debug("Added day_period")
 
-        data_x['time_normalized'] = data_x['Time'] / data_x['Time'].max()
-        logger.debug("Added time_normalized")
+            data_x["time_since_start"] = data_x["Time"] / data_x["Time"].max()
+            logger.debug("Added time_since_start")
+        else:
+            logger.error("Missing column=Time")
+            raise ValueError("Transaction format is invalid")
 
         return data_x
 
     def add_amount_features(self, data_x):
-        logger.info("Add amount features")
+        logger.info("Add amount-based features")
         data_x = data_x.copy()
 
         scaler = StandardScaler()
-        if 'Amount' in data_x.columns:
-            amount_scaled = scaler.fit_transform(data_x[['Amount']])
-            data_x['amount_z_score'] = amount_scaled.flatten()
-        logger.debug("Added amount_z_score")
+        if "Amount" in data_x.columns:
+            data_x["log_amount"] = np.log1p(data_x["Amount"])
+            logger.debug("Added log_amount")
 
-        data_x['is_small_amount'] = (data_x['Amount'] < 10).astype(int)
-        data_x['is_very_small_amount'] = (data_x['Amount'] < 5).astype(int)
-        logger.debug("Added is_small_amount, is_very_small_amount")
-
-        data_x['is_large_amount'] = (data_x['Amount'] > 200).astype(int)
-        data_x['is_very_large_amount'] = (data_x['Amount'] > 500).astype(int)
-        logger.debug("Added is_large_amount, is_very_large_amount")
-
-        data_x['distance_from_fraud_median'] = np.abs(data_x['Amount'] - self.fraud_amount_median)
-        data_x['distance_from_fraud_mean'] = np.abs(data_x['Amount'] - self.fraud_amount_mean)
-        logger.debug("Added distance_from_fraud_median, distance_from_fraud_mean")
-
-        data_x['in_small_fraud_zone'] = ((data_x['Amount'] >= 5) & (data_x['Amount'] <= 15)).astype(int)
-        data_x['in_large_fraud_zone'] = ((data_x['Amount'] >= 100) & (data_x['Amount'] <= 300)).astype(int)
-        logger.debug("Added in_small_fraud_zone, in_large_fraud_zone")
-
-        data_x['fraud_amount_similarity'] = np.minimum(
-            1 / (1 + data_x['distance_from_fraud_median']),
-            1 / (1 + data_x['distance_from_fraud_mean'])
-        )
-        logger.debug("Added fraud_amount_similarity")
+            data_x["amount_scaled"] = scaler.fit_transform(data_x[["Amount"]])
+            logger.debug("Added amount_scaled")
+        else:
+            logger.error("Missing column=Amount")
+            raise ValueError("Transaction format is invalid")
 
         return data_x, scaler
 
@@ -171,10 +174,10 @@ class FraudService:
     def clean_features(self, df):
         try:
             features_to_scale = self.config_loader.config["preprocessor"]["features_to_scale"]
-            features_to_keep = self.config_loader.config["preprocessor"]["features_to_keep"]
-            all_features = features_to_scale + features_to_keep
+            all_features = ["Time"] + features_to_scale + ["Amount", "hour_of_day", "day_period", "time_since_start", "log_amount", "amount_scaled"]
 
             cleaned_df = df[all_features]
+            logger.info(f"Total features: {cleaned_df.shape[1]}")
             return cleaned_df
         except Exception as e:
             logger.error("Unexpected error: ", e)

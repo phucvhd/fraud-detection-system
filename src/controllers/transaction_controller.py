@@ -14,9 +14,7 @@ router = APIRouter(prefix="/transaction")
 
 config_loader = ConfigLoader()
 s3_client = S3Client(config_loader)
-key = config_loader.config["data"]["raw"]["s3"]
-bucket = config_loader.config["aws"]["s3"]["bucket_name"]
-source_data = pd.read_csv(f"s3://{bucket}/{key}")
+source_data = pd.read_csv(f"s3://fraud-detection-sv-bucket/data/creditcard.csv")
 generator = FraudSyntheticDataGenerator(config_loader, source_data)
 
 @router.get("/{time_interval}", response_model=dict)
