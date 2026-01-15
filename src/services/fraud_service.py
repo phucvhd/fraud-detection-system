@@ -105,7 +105,7 @@ class FraudService:
         if 0 <= hour < 4:
             return 0.003968
         elif 4 <= hour < 8:
-            return 0.005402  # Highest risk
+            return 0.005402
         elif 8 <= hour < 12:
             return 0.002177
         elif 12 <= hour < 16:
@@ -113,7 +113,7 @@ class FraudService:
         elif 16 <= hour < 20:
             return 0.001488
         elif 20 <= hour < 24:
-            return 0.001237  # Lowest risk
+            return 0.001237
         else:
             return 0.002
 

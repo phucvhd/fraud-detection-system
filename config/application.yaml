@@ -33,11 +33,16 @@ model:
   type: "random_forest"
   params:
     random_forest:
-      n_estimators: 100
-#      max_depth: 40
+      n_estimators: 300
+      max_depth: 15
       min_samples_split: 10
       min_samples_leaf: 5
-#      max_features: "sqrt"
+      max_features: 'sqrt'
+      class_weight: null
+      bootstrap: true
+      oob_score: true
+      n_jobs: -1
+      max_samples: null
     xgboost:
       n_estimators: 300
       max_depth: 30
@@ -56,7 +61,7 @@ model:
 
 imbalance:
   method: smote
-  sampling_strategy: 0.6
+  sampling_strategy: 0.5
   random_state: 42
 
 preprocessor:
@@ -154,7 +159,7 @@ aws:
 data:
   raw:
     local: "../../data/raw/creditcard.csv"
-    s3: "raw/creditcard.csv"
+    s3: "data/raw/creditcard.csv"
 
 api:
   fraud_detection:

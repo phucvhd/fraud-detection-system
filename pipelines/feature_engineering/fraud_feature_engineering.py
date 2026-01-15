@@ -1,6 +1,7 @@
 import logging
 
 import numpy as np
+import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from config.config_loader import ConfigLoader
@@ -13,11 +14,10 @@ class FraudFeatureEngineering:
         self.fraud_amount_mean = 122.21
 
     def get_hour_risk_score(self, hour):
-        # Based on your 4-hour period analysis
         if 0 <= hour < 4:
             return 0.003968
         elif 4 <= hour < 8:
-            return 0.005402  # Highest risk
+            return 0.005402
         elif 8 <= hour < 12:
             return 0.002177
         elif 12 <= hour < 16:
@@ -25,67 +25,49 @@ class FraudFeatureEngineering:
         elif 16 <= hour < 20:
             return 0.001488
         elif 20 <= hour < 24:
-            return 0.001237  # Lowest risk
+            return 0.001237
         else:
             return 0.002
 
     logger.info("Helper functions defined")
 
     def add_time_features(self, data_x):
-        logger.info("Add time features")
+        logger.info("Add time-based features")
         data_x = data_x.copy()
+        if "Time" in data_x.columns:
+            logger.debug("Add time features")
+            data_x = data_x.copy()
 
-        # Extract hour of day (Time is in seconds)
-        data_x['hour_of_day'] = ((data_x['Time'] % 86400) / 3600).astype(int)
-        logger.info("Added hour_of_day")
+            data_x["hour_of_day"] = (data_x["Time"] / 3600) % 24
+            logger.debug("Added hour_of_day")
 
-        # Hour-based risk score
-        data_x['hour_risk_score'] = data_x['hour_of_day'].apply(self.get_hour_risk_score)
-        logger.info("Added hour_risk_score")
+            hour = (data_x["Time"] / 3600) % 24
+            data_x["day_period"] = pd.cut(hour, bins=[0, 6, 12, 18, 24],
+                                          labels=[0, 1, 2, 3], include_lowest=True)
+            logger.debug("Added day_period")
 
-        # Time normalized (0 to 1)
-        data_x['time_normalized'] = data_x['Time'] / data_x['Time'].max()
-        logger.info("Added time_normalized")
+            data_x["time_since_start"] = data_x["Time"] / data_x["Time"].max()
+            logger.debug("Added time_since_start")
+        else:
+            logger.error("Missing column=Time")
+            raise ValueError("Transaction format is invalid")
 
         return data_x
 
     def add_amount_features(self, data_x):
-        logger.info("Add amount features")
+        logger.info("Add amount-based features")
         data_x = data_x.copy()
 
-        # Fit scaler on training Amount
         scaler = StandardScaler()
-        if 'Amount' in data_x.columns:
-            amount_scaled = scaler.fit_transform(data_x[['Amount']])
-            data_x['amount_z_score'] = amount_scaled.flatten()
-        logger.info("Added amount_z_score")
+        if "Amount" in data_x.columns:
+            data_x["log_amount"] = np.log1p(data_x["Amount"])
+            logger.debug("Added log_amount")
 
-        # Small amount flags
-        data_x['is_small_amount'] = (data_x['Amount'] < 10).astype(int)
-        data_x['is_very_small_amount'] = (data_x['Amount'] < 5).astype(int)
-        logger.info("Added is_small_amount, is_very_small_amount")
-
-        # Large amount flags
-        data_x['is_large_amount'] = (data_x['Amount'] > 200).astype(int)
-        data_x['is_very_large_amount'] = (data_x['Amount'] > 500).astype(int)
-        logger.info("Added is_large_amount, is_very_large_amount")
-
-        # Distance from fraud patterns
-        data_x['distance_from_fraud_median'] = np.abs(data_x['Amount'] - self.fraud_amount_median)
-        data_x['distance_from_fraud_mean'] = np.abs(data_x['Amount'] - self.fraud_amount_mean)
-        logger.info("Added distance_from_fraud_median, distance_from_fraud_mean")
-
-        # Fraud zone flags
-        data_x['in_small_fraud_zone'] = ((data_x['Amount'] >= 5) & (data_x['Amount'] <= 15)).astype(int)
-        data_x['in_large_fraud_zone'] = ((data_x['Amount'] >= 100) & (data_x['Amount'] <= 300)).astype(int)
-        logger.info("Added in_small_fraud_zone, in_large_fraud_zone")
-
-        # Fraud similarity score
-        data_x['fraud_amount_similarity'] = np.minimum(
-            1 / (1 + data_x['distance_from_fraud_median']),
-            1 / (1 + data_x['distance_from_fraud_mean'])
-        )
-        logger.info("Added fraud_amount_similarity")
+            data_x["amount_scaled"] = scaler.fit_transform(data_x[["Amount"]])
+            logger.debug("Added amount_scaled")
+        else:
+            logger.error("Missing column=Amount")
+            raise ValueError("Transaction format is invalid")
 
         return data_x, scaler
 
