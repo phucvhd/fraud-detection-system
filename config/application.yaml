@@ -4,7 +4,7 @@ kafka:
     burst_mode: true
     burst_interval_seconds: 30
     burst_multiplier: 5.0
-    bootstrap_servers: "localhost:9092"
+    bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
     client_id: "fraud-detection-producer"
     compression_type: "snappy"
     linger_ms: 10
@@ -12,7 +12,7 @@ kafka:
     acks: 1
 
   consumer:
-    bootstrap_servers: "localhost:9092"
+    bootstrap_servers: "${KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}"
     group_id: "fraud-detection-consumer-group"
     auto_offset_reset: "earliest"
     enable_auto_commit: true
@@ -33,11 +33,16 @@ model:
   type: "random_forest"
   params:
     random_forest:
-      n_estimators: 100
-#      max_depth: 40
+      n_estimators: 300
+      max_depth: 15
       min_samples_split: 10
       min_samples_leaf: 5
-#      max_features: "sqrt"
+      max_features: 'sqrt'
+      class_weight: null
+      bootstrap: true
+      oob_score: true
+      n_jobs: -1
+      max_samples: null
     xgboost:
       n_estimators: 300
       max_depth: 30
@@ -56,7 +61,7 @@ model:
 
 imbalance:
   method: smote
-  sampling_strategy: 0.6
+  sampling_strategy: 0.5
   random_state: 42
 
 preprocessor:
@@ -64,18 +69,10 @@ preprocessor:
     - Time
     - Amount
     - hour_of_day
-    - hour_risk_score
-    - time_normalized
-    - amount_z_score
-    - is_small_amount
-    - is_very_small_amount
-    - is_large_amount
-    - is_very_large_amount
-    - distance_from_fraud_median
-    - distance_from_fraud_mean
-    - in_small_fraud_zone
-    - in_large_fraud_zone
-    - fraud_amount_similarity
+    - day_period
+    - time_since_start
+    - log_amount
+    - amount_scaled
   features_to_scale:
     - V1
     - V2
@@ -159,17 +156,15 @@ aws:
   s3:
     bucket_name: ${AWS_BUCKET_NAME}
 
-pipeline:
-  data:
-    raw:
-      local: "../../data/raw/creditcard.csv"
-      s3: "raw/creditcard.csv"
+data:
+  raw:
+    local: "../../data/raw/creditcard.csv"
+    s3: "data/raw/creditcard.csv"
 
 api:
   fraud_detection:
     model:
-      type: "random_forest"
-      id: "m-6a52c09913e74a22aece0cbae63c1e5b"
+      id: "fraud-rf-smote-20260105-081438"
     kafka:
       listener_toggle: true
       topic: "transactions"

@@ -34,11 +34,18 @@ class ConfigLoader:
         elif isinstance(obj, list):
             return [self._substitute_env_vars(item) for item in obj]
         elif isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
-            var_name = obj[2:-1]
-            value = os.getenv(var_name)
-            if value is None:
-                raise ValueError(f"Environment variable '{var_name}' not found!")
-            return value
+            var_expr = obj[2:-1]
+            # Support default value syntax: ${VAR:-default}
+            if ':-' in var_expr:
+                var_name, default_value = var_expr.split(':-', 1)
+                value = os.getenv(var_name.strip())
+                return value if value is not None else default_value
+            else:
+                var_name = var_expr
+                value = os.getenv(var_name)
+                if value is None:
+                    raise ValueError(f"Environment variable '{var_name}' not found!")
+                return value
         return obj
 
     def get(self, key, default=None):

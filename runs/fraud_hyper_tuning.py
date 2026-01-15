@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 from config.config_loader import ConfigLoader
-from src.pipelines.fraud_pipeline import FraudPipeline
+from pipelines.fraud_pipeline import FraudPipeline
 
 logging.basicConfig(
         level=logging.INFO,

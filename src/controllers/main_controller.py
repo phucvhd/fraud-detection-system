@@ -14,10 +14,7 @@ from src.services.fraud_service import FraudService
 config_loader = ConfigLoader()
 kafka_config_loader = KafkaConfigLoader(config_loader)
 
-fraud_detection_config = config_loader.config["api"]["fraud_detection"]
-model_type = fraud_detection_config["model"]["type"]
-model_id = fraud_detection_config["model"]["id"]
-fraud_service = FraudService(config_loader, model_type, model_id)
+fraud_service = FraudService(config_loader)
 fraud_listener = FraudListener(config_loader)
 
 @asynccontextmanager

@@ -39,3 +39,8 @@
 6. **Hyperparameter Tuning**
    - Grid Search
    - Random Search
+
+7. **Transaction generator**
+   - Fraud synthetic generator
+8. **Fraud Detection service**
+9. **Kafka architecture**

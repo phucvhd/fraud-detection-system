@@ -129,6 +129,32 @@ services:
       timeout: 10s
       retries: 3
 
+  fraud-detection-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fraud-detection-service
+    depends_on:
+      - kafka
+    ports:
+      - "8000:8000"
+    environment:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+      AWS_BUCKET_NAME: ${AWS_BUCKET_NAME}
+      KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+    volumes:
+      - ./config:/app/config
+    networks:
+      - default
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/docs" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
 volumes:
   kafka-data:
   zookeeper-data:
