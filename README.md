@@ -16,31 +16,33 @@
    - Feature correlation
    - Fraud pattern discovery
 
-2. **Preprocessing**
-   - Load
-   - Validate integrity, consistency, missing value, imbalance
-   - Split
-   - Scaling
+2. **ML Pipeline**
+   - Link: https://github.com/phucvhd/fraud-detection-ml-pipeline
 
-3. **Imbalance Handling**
-   - SMOTE
+   1. **Preprocessing**
+      - Load
+      - Validate integrity, consistency, missing value, imbalance
+      - Split
+      - Scaling
 
-4. **Model Training**
-   - Decision Tree
-   - Random Forest
-   - XGBoost
+   2. **Imbalance Handling**
+      - SMOTE
 
-5. **Model Evaluation**
-   - Precision
-   - Recall
-   - F1 Score
-   - PR AUC
+   3. **Model Training**
+      - Decision Tree
+      - Random Forest
+      - XGBoost
 
-6. **Hyperparameter Tuning**
-   - Grid Search
-   - Random Search
+   4. **Model Evaluation**
+      - Precision
+      - Recall
+      - F1 Score
+      - PR AUC
 
-7. **Transaction generator**
-   - Fraud synthetic generator
-8. **Fraud Detection service**
-9. **Kafka architecture**
+   5. **Hyperparameter Tuning**
+      - Grid Search
+      - Random Search
+
+3. **Transaction generator**
+4. **Fraud Detection service**
+5. **Kafka architecture**
