@@ -34,11 +34,11 @@ model:
   params:
     random_forest:
       n_estimators: 300
-      max_depth: 15
+      max_depth: 25
       min_samples_split: 10
       min_samples_leaf: 5
       max_features: 'sqrt'
-      class_weight: null
+      class_weight: {0: 1, 1: 10}
       bootstrap: true
       oob_score: true
       n_jobs: -1
@@ -61,7 +61,7 @@ model:
 
 imbalance:
   method: smote
-  sampling_strategy: 0.5
+  sampling_strategy: 0.1
   random_state: 42
 
 preprocessor:
@@ -128,10 +128,12 @@ tuner:
     random_search:
       n_iter: 100
       random_forest:
-        min_samples_split: [5, 7, 10]
-        min_samples_leaf: [5, 10, 15]
-#        max_features: [sqrt, log2]
-        n_estimators: [100, 150]
+        min_samples_split: [10]
+        min_samples_leaf: [5]
+        max_features: [sqrt]
+        n_estimators: [300]
+        max_depth: [25]
+        class_weight: [{0: 1, 1: 10}]
       xgboost:
         n_estimators: [200, 300]
         max_depth: [20, 30, 40]
@@ -158,7 +160,7 @@ aws:
 
 data:
   raw:
-    local: "../../data/raw/creditcard.csv"
+    local: "../data/raw/creditcard.csv"
     s3: "data/raw/creditcard.csv"
 
 api:
