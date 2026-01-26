@@ -6,6 +6,7 @@ from pathlib import Path
 import joblib
 import mlflow
 import pandas as pd
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score
 
 from config.config_loader import ConfigLoader
 from pipelines.evaluators.fraud_model_evaluator import FraudModelEvaluator
@@ -62,6 +63,7 @@ class FraudPipeline:
         self.best_score = None
         self.cv_results = None
         self.best_estimator = None
+        self.cv_scores = None
 
     def load_data(self):
         self.raw_data = self.data_loader.load_data(self.raw_data_path)

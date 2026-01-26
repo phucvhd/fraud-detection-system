@@ -34,7 +34,7 @@ model:
   params:
     random_forest:
       n_estimators: 300
-      max_depth: 25
+      max_depth: 15
       min_samples_split: 10
       min_samples_leaf: 5
       max_features: 'sqrt'
@@ -126,14 +126,16 @@ tuner:
       min_samples_split: [2, 5, 10]
       min_samples_leaf: [1, 2, 5]
     random_search:
-      n_iter: 100
+      n_iter: 50
       random_forest:
-        min_samples_split: [10]
-        min_samples_leaf: [5]
-        max_features: [sqrt]
-        n_estimators: [300]
-        max_depth: [25]
-        class_weight: [{0: 1, 1: 10}]
+        max_depth: [ 15, 20, 25, 30, null ]
+        n_estimators: [ 200, 300, 400, 500 ]
+        class_weight: [ { 0: 1, 1: 5 }, { 0: 1, 1: 10 }, { 0: 1, 1: 15 }, { 0: 1, 1: 20 } ]
+        min_samples_split: [ 2, 5, 10 ]
+        min_samples_leaf: [ 1, 2, 5 ]
+        max_features: [ sqrt, log2 ]
+        max_samples: [ 0.7, 0.8, 0.9, null ]
+        bootstrap: [ true ]
       xgboost:
         n_estimators: [200, 300]
         max_depth: [20, 30, 40]
