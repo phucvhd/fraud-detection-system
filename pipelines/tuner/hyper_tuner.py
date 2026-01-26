@@ -2,7 +2,7 @@ import logging
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import make_scorer, recall_score, precision_score
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, TimeSeriesSplit
 from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 
@@ -47,13 +47,14 @@ class HyperTuner:
 
             logger.info(f"Applying {self.tuner_strategy} strategy")
             search = None
+            tscv = TimeSeriesSplit(n_splits=self.hyperparameter_tuning["cv"])
             if self.tuner_strategy == "grid_search":
                 search = GridSearchCV(
                     estimator=estimator,
                     param_grid=self.search_params,
                     scoring=self.scoring,
                     refit=self.evaluation["primary_metric"],
-                    cv=self.hyperparameter_tuning["cv"],
+                    cv=tscv,
                     n_jobs=self.hyperparameter_tuning["n_jobs"],
                     verbose=self.hyperparameter_tuning["verbose"]
                 )
@@ -64,10 +65,10 @@ class HyperTuner:
                     n_iter=self.search_params["n_iter"],
                     scoring=self.scoring,
                     refit=self.evaluation["primary_metric"],
-                    cv=self.hyperparameter_tuning["cv"],
+                    cv=tscv,
                     n_jobs=self.hyperparameter_tuning["n_jobs"],
                     verbose=self.hyperparameter_tuning["verbose"],
-                    random_state=self.hyperparameter_tuning["random_state"]
+                    random_state=self.hyperparameter_tuning["random_state"],
                 )
 
             if search is None:
