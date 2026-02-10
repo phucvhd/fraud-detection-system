@@ -201,8 +201,44 @@ class FraudPipeline:
         self.best_params = search.best_params_
         self.best_score = search.best_score_
 
+    def hyper_tuning_v3(self):
+        search = self.hyper_tuner.init_tuner()
+        search_method = type(search).__name__
+
+        mlflow.log_params({
+            "model_type": self.model_type,
+            "search_method": search_method,
+            "cv": search.cv
+        })
+
+        params = None
+        if search_method == "GridSearchCV":
+            params = search.param_grid
+        elif search_method == "RandomizedSearchCV":
+            params = search.param_distributions
+        for param, values in params.items():
+            mlflow.log_param(param, values)
+
+        search.fit(self.train_x_processed, self.train_y)
+        for idx in range(len(search.cv_results_['params'])):
+            with mlflow.start_run(run_name=f"cv_trial_{idx}", nested=True):
+                params = search.cv_results_['params'][idx]
+                mlflow.log_params(params)
+
+                for key in search.cv_results_.keys():
+                    if 'test' in key:
+                        mlflow.log_metric(key, search.cv_results_[key][idx])
+
+        self.best_estimator = search.best_estimator_
+        self.best_params = search.best_params_
+        self.best_score = search.best_score_
+
     def train_model(self):
         self.model_trainer.train(self.train_x_balanced, self.train_y_balanced)
+        self.model = self.model_trainer.model
+
+    def train_model_v2(self):
+        self.model_trainer.train(self.train_x_processed, self.train_y)
         self.model = self.model_trainer.model
 
     def evaluate_hyper_tune(self):
@@ -448,6 +484,33 @@ class FraudPipeline:
             logger.error(f"Pipeline failed: {e}")
             raise e
 
+    def run_mlflow_experiment_v4(self):
+        try:
+            logger.info(f"Running experiment_{self.run_id}")
+
+            experiment_name = "Fraud detection experiments v4"
+            mlflow.set_experiment(experiment_name)
+
+            with mlflow.start_run(run_name=f"experiment_{self.run_id}"):
+                self.load_data_v2()
+                self.validate_data()
+                self.split_data_v2()
+                self.separate_features()
+                self.feature_process()
+                self.preprocess_data_v2()
+                self.train_model_v2()
+                self.evaluate_model_v2()
+
+                self.log_model()
+                self.log_params()
+                self.log_metrics(self.val_metrics)
+
+            logger.info("PIPELINE COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Pipeline failed: {e}")
+            raise e
+
     def run_mlflow_hyper_tune(self):
         try:
             logger.info("MlFlow: Hyper tuning Fraud detection model")
@@ -482,6 +545,27 @@ class FraudPipeline:
                 self.preprocess_data_v2()
                 self.handle_imbalance()
                 self.hyper_tuning_v2()
+                self.evaluate_hyper_tune_v2()
+
+            logger.info("HYPER TUNING COMPLETE!")
+
+        except Exception as e:
+            logger.error(f"Hyper tuning failed: {e}")
+            raise e
+
+    def run_mlflow_hyper_tune_v3(self):
+        try:
+            logger.info("MlFlow: Hyper tuning Fraud detection model - V3")
+            mlflow.set_experiment("Fraud detection hyper tuning")
+
+            with mlflow.start_run(run_name=f"Tuning_{self.run_id}"):
+                self.load_data_v2()
+                self.validate_data()
+                self.split_data_v2()
+                self.separate_features()
+                self.feature_process()
+                self.preprocess_data_v2()
+                self.hyper_tuning_v3()
                 self.evaluate_hyper_tune_v2()
 
             logger.info("HYPER TUNING COMPLETE!")
