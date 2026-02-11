@@ -1,5 +1,8 @@
 ## Fraud Detection Model
 
+### Migrated Pipeline
+- Link: https://github.com/phucvhd/fraud-detection-ml-pipeline
+
 ### Resources
 - **Dataset**: [Credit Card Fraud Detection – Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)
 
@@ -17,7 +20,6 @@
    - Fraud pattern discovery
 
 2. **ML Pipeline**
-   - Link: https://github.com/phucvhd/fraud-detection-ml-pipeline
 
    1. **Preprocessing**
       - Load
