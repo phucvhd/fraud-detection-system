@@ -24,14 +24,14 @@ def validate_fraud(request: dict):
         decision = fraud_service.predict_transaction(request)
         kafka_service = KafkaService(kafka_config_loader)
 
-        if decision["is_fraud"]:
+        if decision.is_fraud:
             fraud_alerts_topic = fraud_detection_config["kafka"]["fraud_alerts_topic"]
-            kafka_service.send_message(fraud_alerts_topic, decision["transaction_id"], str(decision))
-            logger.info(f"An alert for transaction={decision['transaction_id']} has been sent to {fraud_alerts_topic}")
+            kafka_service.send_message(fraud_alerts_topic, str(decision.transaction_id), decision.model_dump())
+            logger.info(f"An alert for transaction={str(decision.transaction_id)} has been sent to {fraud_alerts_topic}")
 
         decision_topic = fraud_detection_config["kafka"]["decision_topic"]
-        kafka_service.send_message(decision_topic, decision["transaction_id"], str(decision))
-        logger.info(f"Decision for transaction={decision['transaction_id']} has been sent to {decision_topic}")
+        kafka_service.send_message(decision_topic, str(decision.transaction_id), decision.model_dump())
+        logger.info(f"Decision for transaction={str(decision.transaction_id)} has been sent to {decision_topic}")
 
         return JSONResponse(
             status_code=200,

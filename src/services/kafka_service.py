@@ -27,7 +27,7 @@ class KafkaService:
         except Exception as e:
             logger.error("Cannot connect to Kafka", str(e))
             
-    def send_message(self, topic: str, key: str, message: str):
+    def send_message(self, topic: str, key: str, message):
         try:
             self.producer.produce(
                 topic,

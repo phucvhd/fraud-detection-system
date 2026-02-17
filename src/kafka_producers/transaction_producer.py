@@ -13,7 +13,7 @@ class TransactionProducer:
     def __init__(self,
                  topic: str,
                  kafka_config_loader: KafkaConfigLoader,
-                 data_generator: Callable[[float], Dict]):
+                 data_generator: Callable[[int], Dict]):
         self.topic = topic
         self.kafka_producer_config = kafka_config_loader.kafka_producer_config
         self.data_generator = data_generator
@@ -67,7 +67,7 @@ class TransactionProducer:
                     logger.info("Duration limit reached, stopping stream")
                     break
 
-                transaction = self.data_generator(interval_time)
+                transaction = self.data_generator(int(interval_time))
                 interval_time += delay
 
                 if "timestamp" not in transaction:
