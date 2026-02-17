@@ -1,3 +1,4 @@
+import datetime
 import io
 import json
 import logging
@@ -11,6 +12,7 @@ from sklearn.preprocessing import StandardScaler
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
 from src.clients.s3_client import S3Client
+from src.schemas.transaction import TransactionBase, TransactionCanonical
 from src.services.kafka_service import KafkaService
 
 logger = logging.getLogger(__name__)
@@ -51,7 +53,7 @@ class FraudService:
             logger.error(f"Failed to load model id={model_id}")
             raise e
 
-    def predict_transaction(self, transaction: dict) -> dict:
+    def predict_transaction(self, transaction: dict) -> TransactionCanonical:
         transaction_df = pd.DataFrame([transaction])
         transaction_id = transaction["transaction_id"]
         logger.info(f"Processing transaction={transaction_id}")
@@ -69,29 +71,38 @@ class FraudService:
 
         confidence = self._get_confidence_level(fraud_probability)
 
+        now = datetime.datetime.now()
         result = {
             "transaction_id": transaction_id,
             "is_fraud": bool(prediction),
-            "fraud_probability": fraud_probability,
-            "confidence": confidence
+            "event_time_seconds": transaction['Time'],
+            "amount": transaction['Amount'],
+            "event_timestamp": now.isoformat(),
+            "data_source": "ms-fraud-detection",
+            "created_at": now.isoformat(),
+            "features": {f"V{i}": transaction_df.iloc[0][f"V{i}"] for i in range(1, 29)},
+            # "fraud_probability": fraud_probability,
+            # "confidence": confidence
         }
+        transaction = TransactionCanonical(**result)
         logger.info(f"Predict transaction={transaction_id} successfully")
-        return result
+        return transaction
 
     def fraud_handler(self, msg_value):
         kafka_service = KafkaService(self.kafka_config_loader)
 
         transaction = json.loads(msg_value.decode("utf-8"))
         decision = self.predict_transaction(transaction)
+        payload = json.dumps(decision.model_dump(mode="json")).encode("utf-8")
 
-        if decision["is_fraud"]:
+        if decision.is_fraud:
             fraud_alerts_topic = self.fraud_detection_config["kafka"]["fraud_alerts_topic"]
-            kafka_service.send_message(fraud_alerts_topic, decision["transaction_id"], str(decision))
-            logger.info(f"An alert for transaction={decision['transaction_id']} has been sent to {fraud_alerts_topic}")
+            kafka_service.send_message(fraud_alerts_topic, str(decision.transaction_id), payload)
+            logger.info(f"An alert for transaction={str(decision.transaction_id)} has been sent to {fraud_alerts_topic}")
 
         decision_topic = self.fraud_detection_config["kafka"]["decision_topic"]
-        kafka_service.send_message(decision_topic, decision["transaction_id"], str(decision))
-        logger.info(f"Decision for transaction={decision['transaction_id']} has been sent to {decision_topic}")
+        kafka_service.send_message(decision_topic, str(decision.transaction_id), payload)
+        logger.info(f"Decision for transaction={str(decision.transaction_id)} has been sent to {decision_topic}")
 
     def _get_confidence_level(self, probability: float) -> str:
         if probability >= 0.8 or probability <= 0.2:

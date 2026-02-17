@@ -1,3 +1,4 @@
+import datetime
 import logging
 import random
 import uuid
@@ -92,7 +93,7 @@ class FraudSyntheticDataGenerator:
             logger.error("Unexpected error: ", e)
             raise e
 
-    def generate_normal_transaction(self, time_interval: float):
+    def generate_normal_transaction(self, time_interval: int):
         try:
             data = {
                 "transaction_id": str(uuid.uuid4()),
@@ -129,7 +130,7 @@ class FraudSyntheticDataGenerator:
             rows.append(row)
         return pd.DataFrame(rows)
 
-    def generate_fraudulent_transaction(self, time_interval: float):
+    def generate_fraudulent_transaction(self, time_interval: int):
         try:
             data = {
                 "transaction_id": str(uuid.uuid4()),
@@ -188,7 +189,7 @@ class FraudSyntheticDataGenerator:
             rows.append(row)
         return pd.DataFrame(rows)
 
-    def generate_transaction(self, time_interval: float) -> dict:
+    def generate_transaction(self, time_interval: int) -> dict:
         try:
             if random.random() < self.fraud_rate:
                 return self.generate_fraudulent_transaction(time_interval)

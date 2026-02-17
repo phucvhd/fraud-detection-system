@@ -4,6 +4,8 @@ services:
     image: confluentinc/cp-zookeeper:7.4.0
     hostname: zookeeper
     container_name: zookeeper
+    networks:
+      - fraud-net
     ports:
       - "2181:2181"
     environment:
@@ -17,6 +19,8 @@ services:
     image: confluentinc/cp-kafka:7.4.0
     hostname: kafka
     container_name: kafka
+    networks:
+      - fraud-net
     depends_on:
       - zookeeper
     ports:
@@ -44,18 +48,20 @@ services:
       - kafka
     ports:
       - "8080:8080"
+    networks:
+      - fraud-net
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
 
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
+#  redis:
+#    image: redis:7-alpine
+#    container_name: redis
+#    ports:
+#      - "6379:6379"
+#    volumes:
+#      - redis-data:/data
 
   mlflow-db:
     image: postgres:14
@@ -166,3 +172,5 @@ volumes:
 networks:
   mlflow-network:
     driver: bridge
+  fraud-net:
+    external: true
