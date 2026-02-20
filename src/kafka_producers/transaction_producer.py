@@ -54,7 +54,10 @@ class TransactionProducer:
     def start_loading(self, duration_seconds: Optional[int] = None):
         self.running = True
         start_time = time.time()
-        interval_time = 0
+
+        now = datetime.now()
+        midnight = datetime(now.year, now.month, now.day, 0, 0, 0)
+        elapsed_seconds = (now - midnight).total_seconds()
 
         logger.info(f"Starting load to topic '{self.topic}' at {self.kafka_producer_config['transactions_per_second']} TPS")
 
@@ -67,8 +70,8 @@ class TransactionProducer:
                     logger.info("Duration limit reached, stopping stream")
                     break
 
-                transaction = self.data_generator(int(interval_time))
-                interval_time += delay
+                transaction = self.data_generator(int(elapsed_seconds))
+                elapsed_seconds += delay
 
                 if "timestamp" not in transaction:
                     transaction["timestamp"] = datetime.now().isoformat()
