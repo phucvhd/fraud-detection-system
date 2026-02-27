@@ -3,6 +3,9 @@
 ### Migrated Pipeline
 - Link: https://github.com/phucvhd/fraud-detection-ml-pipeline
 
+### RAG-based Fraud analysis service
+- Link: https://github.com/phucvhd/fraud-rag
+
 ### Resources
 - **Dataset**: [Credit Card Fraud Detection – Kaggle](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud)
 
