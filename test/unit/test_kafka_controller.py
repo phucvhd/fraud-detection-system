@@ -8,13 +8,15 @@ def mock_dependencies():
     with patch("src.controllers.kafka_controller.ConfigLoader"), \
          patch("src.controllers.kafka_controller.KafkaConfigLoader"), \
          patch("src.controllers.kafka_controller.KafkaService") as mock_kafka_service:
-             
+
         from src.controllers.kafka_controller import router
-        
+        import src.controllers.kafka_controller as kafka_ctrl
+        kafka_ctrl.kafka_service = mock_kafka_service.return_value
+
         app = FastAPI()
         app.include_router(router)
         client = TestClient(app)
-        
+
         yield client, mock_kafka_service
 
 def test_get_all_topics_success(mock_dependencies):

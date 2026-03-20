@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
+from src.schemas.transaction import TransactionCanonical
 from src.services.fraud_service import FraudService
 from src.services.kafka_service import KafkaService
 
@@ -14,13 +15,13 @@ config_loader = ConfigLoader()
 kafka_config_loader = KafkaConfigLoader(config_loader)
 
 fraud_detection_config = config_loader.config["api"]["fraud_detection"]
-fraud_service = FraudService(config_loader)
 
 logger = logging.getLogger(__name__)
 
-@router.post("/validate", response_model=dict)
-def validate_fraud(request: dict):
+@router.post("/validate", response_model=TransactionCanonical)
+async def validate_fraud(request: dict):
     try:
+        fraud_service = FraudService(config_loader)
         decision = fraud_service.predict_transaction(request)
         kafka_service = KafkaService(kafka_config_loader)
 
@@ -35,11 +36,11 @@ def validate_fraud(request: dict):
 
         return JSONResponse(
             status_code=200,
-            content=decision
+            content=decision.model_dump(mode="json")
         )
     except Exception as e:
-        logger.error(f"Failed to validate transaction_id: {request['transaction_id']}", e)
+        logger.error(f"Failed to validate transaction_id={request.get('transaction_id')}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={f"message: Failed to validate transaction"}
+            content={"message": f"Failed to validate transaction: {e}"}
         )

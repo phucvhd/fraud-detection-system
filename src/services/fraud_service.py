@@ -25,6 +25,7 @@ class FraudService:
         self.kafka_service = KafkaService(self.kafka_config_loader)
         self.fraud_detection_config = config_loader.config["api"]["fraud_detection"]
         self.s3_client = S3Client(config_loader)
+        self.scaler: StandardScaler | None = None
         self.model = self._load_model(model_id)
 
     def _load_model(self, model_id: str):
@@ -35,19 +36,26 @@ class FraudService:
 
             tar = tarfile.open(fileobj=bytestream, mode="r:gz")
 
-            model_joblib = None
+            model_member = None
+            scaler_member = None
             for member in tar.getmembers():
                 if member.name.endswith("model.joblib"):
-                    model_joblib = member
-                    break
+                    model_member = member
+                elif member.name.endswith("scaler.joblib"):
+                    scaler_member = member
 
-            if model_joblib is None:
+            if model_member is None:
                 raise FileNotFoundError("model.joblib not found inside tar.gz")
 
-            model_file = tar.extractfile(model_joblib)
-            model = joblib.load(model_file)
+            model = joblib.load(tar.extractfile(model_member))
 
-            logger.info(f"Model id={model_id} load successfully")
+            if scaler_member is not None:
+                self.scaler = joblib.load(tar.extractfile(scaler_member))
+                logger.info(f"Scaler loaded for model id={model_id}")
+            else:
+                logger.warning(f"No scaler.joblib found in archive for model id={model_id}. amount_scaled may be inaccurate.")
+
+            logger.info(f"Model id={model_id} loaded successfully")
             return model
         except Exception as e:
             logger.error(f"Failed to load model id={model_id}")
@@ -65,7 +73,7 @@ class FraudService:
 
         try:
             probabilities = self.model.predict_proba(transaction_df_cleaned)
-            fraud_probability = float(probabilities[0, 1])
+            fraud_probability = float(probabilities[0][1])
         except AttributeError:
             fraud_probability = float(prediction)
 
@@ -157,24 +165,27 @@ class FraudService:
         logger.info("Add amount-based features")
         data_x = data_x.copy()
 
-        scaler = StandardScaler()
-        if "Amount" in data_x.columns:
-            data_x["log_amount"] = np.log1p(data_x["Amount"])
-            logger.debug("Added log_amount")
-
-            data_x["amount_scaled"] = scaler.fit_transform(data_x[["Amount"]])
-            logger.debug("Added amount_scaled")
-        else:
+        if "Amount" not in data_x.columns:
             logger.error("Missing column=Amount")
             raise ValueError("Transaction format is invalid")
 
-        return data_x, scaler
+        data_x["log_amount"] = np.log1p(data_x["Amount"])
+        logger.debug("Added log_amount")
+
+        if self.scaler is not None:
+            data_x["amount_scaled"] = self.scaler.transform(data_x[["Amount"]])
+        else:
+            scaler = StandardScaler()
+            data_x["amount_scaled"] = scaler.fit_transform(data_x[["Amount"]])
+        logger.debug("Added amount_scaled")
+
+        return data_x
 
     def process(self, data_x):
         try:
             logger.info("Features processing")
             data_time_x = self.add_time_features(data_x)
-            data_time_amount_x, amount_scaler = self.add_amount_features(data_time_x)
+            data_time_amount_x = self.add_amount_features(data_time_x)
             logger.info("Features processing complete")
 
             return data_time_amount_x

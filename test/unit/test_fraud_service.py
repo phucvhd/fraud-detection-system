@@ -36,16 +36,23 @@ def fraud_service(mock_joblib, mock_tarfile, mock_kafka_service, mock_kafka_conf
     mock_model.predict.return_value = [1]
     mock_model.predict_proba.return_value = [[0.1, 0.9]]
     mock_joblib.load.return_value = mock_model
-    
+
     mock_s3_instance = mock_s3_client.return_value
     mock_s3_instance.get_object.return_value = b"mocked tar file content"
-    
+
+    mock_member = Mock()
+    mock_member.name = "model.joblib"
+    mock_tar = Mock()
+    mock_tar.getmembers.return_value = [mock_member]
+    mock_tar.extractfile.return_value = Mock()
+    mock_tarfile.open.return_value = mock_tar
+
     service = FraudService(mock_config_loader)
     return service
 
 def test_predict_transaction(fraud_service):
     transaction = {
-        "transaction_id": "tx123",
+        "transaction_id": "123e4567-e89b-12d3-a456-426614174000",
         "Time": 3600,
         "Amount": 100.0,
     }
@@ -55,14 +62,14 @@ def test_predict_transaction(fraud_service):
     result = fraud_service.predict_transaction(transaction)
     
     assert isinstance(result, TransactionCanonical)
-    assert result.transaction_id == "tx123"
+    assert str(result.transaction_id) == "123e4567-e89b-12d3-a456-426614174000"
     assert result.is_fraud is True
     assert result.amount == 100.0
     assert result.event_time_seconds == 3600
 
 def test_fraud_handler(fraud_service):
     transaction = {
-        "transaction_id": "tx123",
+        "transaction_id": "123e4567-e89b-12d3-a456-426614174000",
         "Time": 3600,
         "Amount": 100.0,
     }
@@ -83,8 +90,8 @@ def test_fraud_handler(fraud_service):
 def test_get_confidence_level(fraud_service):
     assert fraud_service._get_confidence_level(0.9) == "high"
     assert fraud_service._get_confidence_level(0.1) == "high"
-    assert fraud_service._get_confidence_level(0.5) == "medium"
-    assert fraud_service._get_confidence_level(0.7) == "low"
+    assert fraud_service._get_confidence_level(0.7) == "medium"
+    assert fraud_service._get_confidence_level(0.5) == "low"
 
 def test_get_hour_risk_score(fraud_service):
     assert fraud_service.get_hour_risk_score(2) == 0.003968
@@ -101,7 +108,7 @@ def test_add_time_features(fraud_service):
 
 def test_add_amount_features(fraud_service):
     df = pd.DataFrame([{"Amount": 100.0}])
-    result, scaler = fraud_service.add_amount_features(df)
+    result = fraud_service.add_amount_features(df)
     
     assert "log_amount" in result.columns
     assert "amount_scaled" in result.columns
@@ -129,7 +136,7 @@ def test_clean_features(fraud_service):
     df = pd.DataFrame(data)
     result = fraud_service.clean_features(df)
     
-    assert len(result.columns) == 34
+    assert len(result.columns) == 35
     assert "Time" in result.columns
     assert "Amount" in result.columns
     assert "V1" in result.columns

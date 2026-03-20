@@ -1,6 +1,11 @@
+import logging
+import threading
+
 from confluent_kafka import Consumer
 
 from config.kafka_config import KafkaConfigLoader
+
+logger = logging.getLogger(__name__)
 
 
 class KafkaListener:
@@ -8,11 +13,12 @@ class KafkaListener:
         self.topic = topic
         self.handler = handler
         self.consumer = kafka_config_loader.consumer
+        self._stop_event = threading.Event()
 
     def start(self):
         self.consumer.subscribe([self.topic])
 
-        while True:
+        while not self._stop_event.is_set():
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue
@@ -22,8 +28,9 @@ class KafkaListener:
             try:
                 self.handler(msg.value())
                 self.consumer.commit(msg)
-            except Exception as e:
-                raise e
+            except Exception:
+                logger.error(f"Failed to process message from topic={self.topic}", exc_info=True)
 
     def stop(self):
+        self._stop_event.set()
         self.consumer.close()

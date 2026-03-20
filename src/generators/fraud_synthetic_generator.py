@@ -145,23 +145,21 @@ class FraudSyntheticDataGenerator:
                    fraud_ranges["large"]["proportion"]]
             )
 
-            amount = 0
-            for ft in fraud_type:
-                if ft == "small":
-                    amount = np.random.uniform(
-                        fraud_ranges["small"]["min"],
-                        fraud_ranges["small"]["max"]
-                    )
-                elif ft == "medium":
-                    amount = np.random.uniform(
-                        fraud_ranges["medium"]["min"],
-                        fraud_ranges["medium"]["max"]
-                    )
-                else:
-                    amount = np.random.uniform(
-                        fraud_ranges["large"]["min"],
-                        fraud_ranges["large"]["max"]
-                    )
+            if fraud_type == "small":
+                amount = np.random.uniform(
+                    fraud_ranges["small"]["min"],
+                    fraud_ranges["small"]["max"]
+                )
+            elif fraud_type == "medium":
+                amount = np.random.uniform(
+                    fraud_ranges["medium"]["min"],
+                    fraud_ranges["medium"]["max"]
+                )
+            else:
+                amount = np.random.uniform(
+                    fraud_ranges["large"]["min"],
+                    fraud_ranges["large"]["max"]
+                )
 
             data["Amount"] = amount
 
