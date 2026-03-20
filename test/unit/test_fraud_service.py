@@ -101,7 +101,7 @@ def test_add_time_features(fraud_service):
 
 def test_add_amount_features(fraud_service):
     df = pd.DataFrame([{"Amount": 100.0}])
-    result, scaler = fraud_service.add_amount_features(df)
+    result = fraud_service.add_amount_features(df)
     
     assert "log_amount" in result.columns
     assert "amount_scaled" in result.columns

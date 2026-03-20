@@ -14,27 +14,25 @@ config_loader = ConfigLoader()
 kafka_config = KafkaConfigLoader(config_loader)
 kafka_service = KafkaService(kafka_config)
 
-logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+logger = logging.getLogger(__name__)
 
 @router.get("/topics", response_model=dict)
-def get_all_topics():
+async def get_all_topics():
     try:
         response = kafka_service.list_all_topics()
         return JSONResponse(
                 status_code=200,
                 content=response
             )
-    except Exception:
+    except Exception as e:
+        logger.error("Failed to get topics from kafka", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={f"message: Failed to get topics from kafka"}
+            content={"message": f"Failed to get topics from kafka: {e}"}
         )
 
 @router.post("/topic/{topic_name}")
-def send_message(topic_name: str, message: dict):
+async def send_message(topic_name: str, message: dict):
     try:
         message_str = json.dumps(message["value"])
         kafka_service.send_message(topic_name, message["key"], message_str)
@@ -42,50 +40,54 @@ def send_message(topic_name: str, message: dict):
                 status_code=200,
                 content=f"Message sent to topic={topic_name} successfully"
             )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to send message to topic={topic_name}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={f"message: Failed to send message to topic={topic_name}"}
+            content={"message": f"Failed to send message to topic={topic_name}: {e}"}
         )
 
 @router.get("/topic/{topic_name}")
-def consume_message(topic_name: str):
+async def consume_message(topic_name: str):
     try:
         response = kafka_service.consume_topic(topic_name, 10)
         return JSONResponse(
                 status_code=200,
                 content=response
             )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to consume message from topic={topic_name}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={f"message: Failed to consume message to topic={topic_name}"}
+            content={"message": f"Failed to consume message from topic={topic_name}: {e}"}
         )
 
 @router.post("/topic/{topic_name}/create")
-def create_topic(topic_name: str):
+async def create_topic(topic_name: str):
     try:
         kafka_service.create_topic(topic_name)
         return JSONResponse(
                 status_code=200,
                 content=f"Topic={topic_name} created successfully"
             )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to create topic={topic_name}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={f"message: Failed to create topic={topic_name}"}
+            content={"message": f"Failed to create topic={topic_name}: {e}"}
         )
 
 @router.delete("/topic/{topic_name}/delete")
-def delete_topic(topic_name: str):
+async def delete_topic(topic_name: str):
     try:
         kafka_service.delete_topic(topic_name)
         return JSONResponse(
                 status_code=200,
                 content=f"Topic={topic_name} deleted successfully"
             )
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to delete topic={topic_name}", exc_info=True)
         return JSONResponse(
             status_code=400,
-            content={f"message: Failed to delete topic={topic_name}"}
+            content={"message": f"Failed to delete topic={topic_name}: {e}"}
         )

@@ -1,8 +1,11 @@
+import logging
 import threading
 
 from confluent_kafka import Consumer
 
 from config.kafka_config import KafkaConfigLoader
+
+logger = logging.getLogger(__name__)
 
 
 class KafkaListener:
@@ -25,8 +28,8 @@ class KafkaListener:
             try:
                 self.handler(msg.value())
                 self.consumer.commit(msg)
-            except Exception as e:
-                raise e
+            except Exception:
+                logger.error(f"Failed to process message from topic={self.topic}", exc_info=True)
 
     def stop(self):
         self._stop_event.set()
