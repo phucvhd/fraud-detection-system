@@ -48,5 +48,5 @@ def test_validate_fraud_failure(mock_dependencies):
     response = client.post("/fraud/validate", json={"transaction_id": "tx123"})
     
     assert response.status_code == 400
-    assert response.json() == {"message: Failed to validate transaction"}
+    assert response.json() == {"message": "Failed to validate transaction: Test error"}
 

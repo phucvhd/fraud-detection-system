@@ -15,13 +15,13 @@ config_loader = ConfigLoader()
 kafka_config_loader = KafkaConfigLoader(config_loader)
 
 fraud_detection_config = config_loader.config["api"]["fraud_detection"]
-fraud_service = FraudService(config_loader)
 
 logger = logging.getLogger(__name__)
 
 @router.post("/validate", response_model=TransactionCanonical)
 async def validate_fraud(request: dict):
     try:
+        fraud_service = FraudService(config_loader)
         decision = fraud_service.predict_transaction(request)
         kafka_service = KafkaService(kafka_config_loader)
 

@@ -59,7 +59,7 @@ def test_calculate_delay_burst_mode():
 @patch("src.kafka_producers.transaction_producer.time.sleep")
 @patch("src.kafka_producers.transaction_producer.time.time")
 def test_start_loading(mock_time, mock_sleep, producer):
-    mock_time.side_effect = [0, 0, 0, 2]
+    mock_time.side_effect = [0, 0, 2]
     
     producer.start_loading(duration_seconds=1)
     

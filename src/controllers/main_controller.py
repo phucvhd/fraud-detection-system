@@ -18,11 +18,11 @@ from src.services.fraud_service import FraudService
 config_loader = ConfigLoader()
 kafka_config_loader = KafkaConfigLoader(config_loader)
 
-fraud_service = FraudService(config_loader)
-fraud_listener = FraudListener(config_loader)
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    fraud_service = FraudService(config_loader)
+    fraud_listener = FraudListener(config_loader)
+
     s3_client = S3Client(config_loader)
     s3_key = config_loader.config["data"]["raw"]["s3"]
     obj = s3_client.get_object(s3_key)

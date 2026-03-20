@@ -73,7 +73,7 @@ class FraudService:
 
         try:
             probabilities = self.model.predict_proba(transaction_df_cleaned)
-            fraud_probability = float(probabilities[0, 1])
+            fraud_probability = float(probabilities[0][1])
         except AttributeError:
             fraud_probability = float(prediction)
 

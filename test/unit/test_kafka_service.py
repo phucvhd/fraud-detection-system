@@ -60,13 +60,15 @@ def test_consume_topic(mock_time, kafka_service):
     kafka_service.consumer.close.assert_called_once()
 
 def test_delivery_report_success(kafka_service, caplog):
+    import logging
     mock_msg = Mock()
     mock_msg.topic.return_value = "topic"
     mock_msg.partition.return_value = 0
     mock_msg.offset.return_value = 1
-    
-    kafka_service.delivery_report(None, mock_msg)
-    
+
+    with caplog.at_level(logging.INFO):
+        kafka_service.delivery_report(None, mock_msg)
+
     assert "Message delivered to topic partition 0 offset 1" in caplog.text
 
 def test_delivery_report_error(kafka_service, caplog):
