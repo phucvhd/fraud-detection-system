@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from config.config_loader import ConfigLoader
-from services.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
+from src.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
 
 mock_amount_std = 1.2
 mock_amount_mean = 3.5
