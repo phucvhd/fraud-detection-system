@@ -25,6 +25,7 @@ async def lifespan(app: FastAPI):
         daemon=True)
     thread.start()
     yield
+    fraud_listener.stop_listener()
 
 app = FastAPI(lifespan=lifespan)
 

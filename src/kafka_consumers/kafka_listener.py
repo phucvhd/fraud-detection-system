@@ -1,3 +1,5 @@
+import threading
+
 from confluent_kafka import Consumer
 
 from config.kafka_config import KafkaConfigLoader
@@ -8,11 +10,12 @@ class KafkaListener:
         self.topic = topic
         self.handler = handler
         self.consumer = kafka_config_loader.consumer
+        self._stop_event = threading.Event()
 
     def start(self):
         self.consumer.subscribe([self.topic])
 
-        while True:
+        while not self._stop_event.is_set():
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue
@@ -26,4 +29,5 @@ class KafkaListener:
                 raise e
 
     def stop(self):
+        self._stop_event.set()
         self.consumer.close()

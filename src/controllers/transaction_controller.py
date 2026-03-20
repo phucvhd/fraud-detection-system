@@ -15,15 +15,24 @@ router = APIRouter(prefix="/transaction")
 
 config_loader = ConfigLoader()
 s3_client = S3Client(config_loader)
-s3_key = config_loader.config["data"]["raw"]["s3"]
-obj = s3_client.get_object(s3_key)
-source_data = pd.read_csv(io.BytesIO(obj))
-generator = FraudSyntheticDataGenerator(config_loader, source_data)
+
+_generator: FraudSyntheticDataGenerator | None = None
+
+
+def _get_generator() -> FraudSyntheticDataGenerator:
+    global _generator
+    if _generator is None:
+        s3_key = config_loader.config["data"]["raw"]["s3"]
+        obj = s3_client.get_object(s3_key)
+        source_data = pd.read_csv(io.BytesIO(obj))
+        _generator = FraudSyntheticDataGenerator(config_loader, source_data)
+    return _generator
+
 
 @router.get("/{time_interval}", response_model=dict)
 def generate_transaction(time_interval: int):
     try:
-        response = generator.generate_transaction(time_interval)
+        response = _get_generator().generate_transaction(time_interval)
         return JSONResponse(
             status_code=200,
             content=response
@@ -37,7 +46,7 @@ def generate_transaction(time_interval: int):
 @router.get("/fraud/{time_interval}", response_model=dict)
 def generate_fraud_transaction(time_interval: int):
     try:
-        response = generator.generate_fraudulent_transaction(time_interval)
+        response = _get_generator().generate_fraudulent_transaction(time_interval)
         return JSONResponse(
             status_code=200,
             content=response
@@ -49,9 +58,9 @@ def generate_fraud_transaction(time_interval: int):
         )
 
 @router.get("/normal/{time_interval}", response_model=dict)
-def generate_fraud_transaction(time_interval: int):
+def generate_normal_transaction(time_interval: int):
     try:
-        response = generator.generate_normal_transaction(time_interval)
+        response = _get_generator().generate_normal_transaction(time_interval)
         return JSONResponse(
             status_code=200,
             content=response
@@ -69,7 +78,7 @@ def inject_transactions(duration_seconds: int):
     transaction_producer = TransactionProducer(
         topic=config_loader.config["fraud_generator"]["topic"],
         kafka_config_loader=kafka_config_loader,
-        data_generator=generator.generate_transaction
+        data_generator=_get_generator().generate_transaction
     )
 
     transaction_producer.start_loading(duration_seconds=duration_seconds)
