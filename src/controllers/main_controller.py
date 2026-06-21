@@ -14,34 +14,46 @@ from src.controllers.transaction_controller import router as transaction_router
 from src.generators.fraud_synthetic_generator import FraudSyntheticDataGenerator
 from src.kafka_consumers.fraud_listener import FraudListener
 from src.services.fraud_service import FraudService
+from src.services.kafka_service import KafkaService
 
-config_loader = ConfigLoader()
-kafka_config_loader = KafkaConfigLoader(config_loader)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    fraud_service = FraudService(config_loader)
-    fraud_listener = FraudListener(config_loader)
+    config_loader = ConfigLoader()
+    kafka_config_loader = KafkaConfigLoader(config_loader)
 
     s3_client = S3Client(config_loader)
     s3_key = config_loader.config["data"]["raw"]["s3"]
-    obj = s3_client.get_object(s3_key)
-    source_data = pd.read_csv(io.BytesIO(obj))
+    source_data = pd.read_csv(io.BytesIO(s3_client.get_object(s3_key)))
+
+    fraud_service = FraudService(config_loader)
+    fraud_listener = FraudListener(config_loader)
+
+    app.state.config_loader = config_loader
+    app.state.kafka_config_loader = kafka_config_loader
+    app.state.kafka_service = KafkaService(kafka_config_loader)
+    app.state.fraud_service = fraud_service
     app.state.generator = FraudSyntheticDataGenerator(config_loader, source_data)
 
     thread = threading.Thread(
         target=fraud_listener.start_listener,
         args=(fraud_service.fraud_handler,),
-        daemon=True)
+        daemon=True,
+    )
     thread.start()
+
     yield
+
     fraud_listener.stop_listener()
 
+
 app = FastAPI(lifespan=lifespan)
+
 
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
 
 app.include_router(fraud_router)
 app.include_router(kafka_router)

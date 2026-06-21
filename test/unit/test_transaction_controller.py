@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch, AsyncMock
+from unittest.mock import Mock, patch
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
 import pytest
@@ -6,22 +6,21 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def mock_dependencies():
-    with patch("src.controllers.transaction_controller.ConfigLoader"), \
-         patch("src.controllers.transaction_controller.KafkaConfigLoader"), \
-         patch("src.controllers.transaction_controller.TransactionProducer") as mock_producer, \
-         patch("src.controllers.transaction_controller.asyncio.sleep", new_callable=AsyncMock):
-
-        from src.controllers import transaction_controller
-        transaction_controller.config_loader.config = {
-            "data": {"raw": {"s3": "test_s3_key"}},
-            "fraud_generator": {"topic": "test_topic"}
-        }
-
-        from src.controllers.transaction_controller import router
+    with patch("src.kafka_producers.transaction_producer.KafkaConfigLoader"), \
+         patch("src.controllers.transaction_controller.TransactionProducer") as mock_producer:
 
         mock_generator = Mock()
+        mock_config_loader = Mock()
+        mock_config_loader.config = {
+            "fraud_generator": {"topic": "test_topic"},
+        }
+        mock_kafka_config_loader = Mock()
+
+        from src.controllers.transaction_controller import router
         app = FastAPI()
         app.state.generator = mock_generator
+        app.state.config_loader = mock_config_loader
+        app.state.kafka_config_loader = mock_kafka_config_loader
         app.include_router(router)
         client = TestClient(app)
 

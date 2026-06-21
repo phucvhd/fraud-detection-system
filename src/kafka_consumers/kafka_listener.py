@@ -9,28 +9,28 @@ logger = logging.getLogger(__name__)
 
 
 class KafkaListener:
-    def __init__(self, topic, handler, kafka_config_loader: KafkaConfigLoader):
+    def __init__(self, topic: str, handler, kafka_config_loader: KafkaConfigLoader):
         self.topic = topic
         self.handler = handler
         self.consumer = kafka_config_loader.consumer
         self._stop_event = threading.Event()
 
-    def start(self):
+    def start(self) -> None:
         self.consumer.subscribe([self.topic])
+        logger.info("Kafka listener started on topic=%s", self.topic)
 
         while not self._stop_event.is_set():
             msg = self.consumer.poll(1.0)
-            if msg is None:
+            if msg is None or msg.error():
                 continue
-            if msg.error():
-                continue
-
             try:
                 self.handler(msg.value())
                 self.consumer.commit(msg)
             except Exception:
-                logger.error(f"Failed to process message from topic={self.topic}", exc_info=True)
+                logger.error("Failed to process message from topic=%s", self.topic, exc_info=True)
 
-    def stop(self):
+        logger.info("Kafka listener stopped on topic=%s", self.topic)
+
+    def stop(self) -> None:
         self._stop_event.set()
         self.consumer.close()

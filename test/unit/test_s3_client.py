@@ -86,22 +86,17 @@ def test_download_file(s3_client):
 
 def test_list_objects(s3_client):
     prefix = "test/"
-    s3_client.s3_client.list_objects_v2.side_effect = [
-        {
-            "Contents": [{"Key": "test/1.json"}, {"Key": "test/2.json"}],
-            "IsTruncated": True,
-            "NextContinuationToken": "token1"
-        },
-        {
-            "Contents": [{"Key": "test/3.json"}],
-            "IsTruncated": False
-        }
-    ]
-    
+    page1 = {"Contents": [{"Key": "test/1.json"}, {"Key": "test/2.json"}]}
+    page2 = {"Contents": [{"Key": "test/3.json"}]}
+    mock_paginator = Mock()
+    mock_paginator.paginate.return_value = [page1, page2]
+    s3_client.s3_client.get_paginator.return_value = mock_paginator
+
     results = s3_client.list_objects(prefix)
-    
+
     assert results == ["test/1.json", "test/2.json", "test/3.json"]
-    assert s3_client.s3_client.list_objects_v2.call_count == 2
+    s3_client.s3_client.get_paginator.assert_called_once_with("list_objects_v2")
+    mock_paginator.paginate.assert_called_once_with(Bucket="test-bucket", Prefix=prefix)
 
 def test_get_all_jsons_from_folder(s3_client):
     prefix = "data/"

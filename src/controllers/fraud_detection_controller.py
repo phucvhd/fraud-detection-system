@@ -1,46 +1,39 @@
-import json
 import logging
-from fastapi import APIRouter
+
+from fastapi import APIRouter, Request
 from starlette.responses import JSONResponse
 
-from config.config_loader import ConfigLoader
-from config.kafka_config import KafkaConfigLoader
 from src.schemas.transaction import TransactionCanonical
-from src.services.fraud_service import FraudService
-from src.services.kafka_service import KafkaService
 
 router = APIRouter(prefix="/fraud")
-
-config_loader = ConfigLoader()
-kafka_config_loader = KafkaConfigLoader(config_loader)
-
-fraud_detection_config = config_loader.config["api"]["fraud_detection"]
-
 logger = logging.getLogger(__name__)
 
+
 @router.post("/validate", response_model=TransactionCanonical)
-async def validate_fraud(request: dict):
+async def validate_fraud(request: Request, body: dict):
     try:
-        fraud_service = FraudService(config_loader)
-        decision = fraud_service.predict_transaction(request)
-        kafka_service = KafkaService(kafka_config_loader)
+        fraud_service = request.app.state.fraud_service
+        kafka_service = request.app.state.kafka_service
+        kafka_cfg = request.app.state.config_loader.config["api"]["fraud_detection"]["kafka"]
+
+        decision = fraud_service.predict_transaction(body)
 
         if decision.is_fraud:
-            fraud_alerts_topic = fraud_detection_config["kafka"]["fraud_alerts_topic"]
-            kafka_service.send_message(fraud_alerts_topic, str(decision.transaction_id), decision.model_dump())
-            logger.info(f"An alert for transaction={str(decision.transaction_id)} has been sent to {fraud_alerts_topic}")
+            kafka_service.send_message(
+                kafka_cfg["fraud_alerts_topic"],
+                str(decision.transaction_id),
+                decision.model_dump(),
+            )
+            logger.info("Fraud alert sent for transaction=%s", decision.transaction_id)
 
-        decision_topic = fraud_detection_config["kafka"]["decision_topic"]
-        kafka_service.send_message(decision_topic, str(decision.transaction_id), decision.model_dump())
-        logger.info(f"Decision for transaction={str(decision.transaction_id)} has been sent to {decision_topic}")
+        kafka_service.send_message(
+            kafka_cfg["decision_topic"],
+            str(decision.transaction_id),
+            decision.model_dump(),
+        )
+        logger.info("Decision sent for transaction=%s", decision.transaction_id)
 
-        return JSONResponse(
-            status_code=200,
-            content=decision.model_dump(mode="json")
-        )
-    except Exception as e:
-        logger.error(f"Failed to validate transaction_id={request.get('transaction_id')}", exc_info=True)
-        return JSONResponse(
-            status_code=400,
-            content={"message": f"Failed to validate transaction: {e}"}
-        )
+        return JSONResponse(status_code=200, content=decision.model_dump(mode="json"))
+    except Exception:
+        logger.error("Failed to validate transaction_id=%s", body.get("transaction_id"), exc_info=True)
+        return JSONResponse(status_code=500, content={"message": "Failed to validate transaction"})
