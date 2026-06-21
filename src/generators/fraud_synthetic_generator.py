@@ -1,4 +1,3 @@
-import datetime
 import logging
 import random
 import uuid
@@ -6,219 +5,140 @@ import uuid
 import numpy as np
 import pandas as pd
 from pandas import DataFrame
-from sklearn.preprocessing import StandardScaler
 
 from config.config_loader import ConfigLoader
 
 logger = logging.getLogger(__name__)
 
+
 class FraudSyntheticDataGenerator:
-    def __init__(self, config_loader: ConfigLoader, df: DataFrame, seed=42):
+    def __init__(self, config_loader: ConfigLoader, df: DataFrame, seed: int = 42):
         self.max_transaction_time = config_loader.config["fraud_generator"]["max_transaction_time"]
         self.fraud_rate = config_loader.config["fraud_generator"]["fraud_rate"]
         np.random.seed(seed)
         random.seed(seed)
-        self.scaler = StandardScaler()
         self.params = self._calibrate_from_dataframe(df)
 
-    def _calibrate_from_dataframe(self, df: DataFrame):
+    def _calibrate_from_dataframe(self, df: DataFrame) -> dict:
         try:
             normal_df = df[df["Class"] == 0]
             fraud_df = df[df["Class"] == 1]
-
-            calibrated = {
-                "normal": {"v_features": {}},
-                "fraud": {"v_features": {}}
-            }
 
             normal_amounts = normal_df["Amount"]
             normal_amounts_nonzero = normal_amounts[normal_amounts > 0]
             log_amounts = np.log(normal_amounts_nonzero)
 
-            calibrated["normal"]["amount"] = {
-                "mean": log_amounts.mean(),
-                "sigma": log_amounts.std(),
-                "min": normal_amounts_nonzero.min(),
-                "max": normal_amounts_nonzero.max(),
-                "p99": normal_amounts_nonzero.quantile(0.99)
+            calibrated = {
+                "normal": {
+                    "amount": {
+                        "mean": log_amounts.mean(),
+                        "sigma": log_amounts.std(),
+                        "min": normal_amounts_nonzero.min(),
+                        "max": normal_amounts_nonzero.max(),
+                        "p99": normal_amounts_nonzero.quantile(0.99),
+                    },
+                    "v_features": {},
+                },
+                "fraud": {
+                    "amount_ranges": {},
+                    "v_features": {},
+                },
             }
 
             fraud_amounts = fraud_df["Amount"]
-
-            p4 = fraud_amounts.quantile(0.4)
-            p7 = fraud_amounts.quantile(0.7)
-
-            small_frauds = fraud_amounts[fraud_amounts < p4]
-            medium_frauds = fraud_amounts[(fraud_amounts >= p4) & (fraud_amounts < p7)]
-            large_frauds = fraud_amounts[fraud_amounts >= p7]
-
-            calibrated["fraud"]["amount_ranges"] = {
-                "small": {
-                    "proportion": len(small_frauds) / len(fraud_amounts),
-                    "min": small_frauds.min(),
-                    "max": small_frauds.max(),
-                    "mean": small_frauds.mean()
-                },
-                "medium": {
-                    "proportion": len(medium_frauds) / len(fraud_amounts),
-                    "min": medium_frauds.min(),
-                    "max": medium_frauds.max(),
-                    "mean": medium_frauds.mean()
-                },
-                "large": {
-                    "proportion": len(large_frauds) / len(fraud_amounts),
-                    "min": large_frauds.min(),
-                    "max": large_frauds.max(),
-                    "mean": large_frauds.mean()
-                }
+            p4, p7 = fraud_amounts.quantile(0.4), fraud_amounts.quantile(0.7)
+            buckets = {
+                "small": fraud_amounts[fraud_amounts < p4],
+                "medium": fraud_amounts[(fraud_amounts >= p4) & (fraud_amounts < p7)],
+                "large": fraud_amounts[fraud_amounts >= p7],
             }
+            for name, subset in buckets.items():
+                calibrated["fraud"]["amount_ranges"][name] = {
+                    "proportion": len(subset) / len(fraud_amounts),
+                    "min": subset.min(),
+                    "max": subset.max(),
+                    "mean": subset.mean(),
+                }
 
             for i in range(1, 29):
-                v_col = f"V{i}"
-
-                calibrated["normal"]["v_features"][v_col] = {
-                    "mean": normal_df[v_col].mean(),
-                    "std": normal_df[v_col].std()
+                col = f"V{i}"
+                calibrated["normal"]["v_features"][col] = {
+                    "mean": normal_df[col].mean(),
+                    "std": normal_df[col].std(),
                 }
-
-                calibrated["fraud"]["v_features"][v_col] = {
-                    "mean": fraud_df[v_col].mean(),
-                    "std": fraud_df[v_col].std()
+                calibrated["fraud"]["v_features"][col] = {
+                    "mean": fraud_df[col].mean(),
+                    "std": fraud_df[col].std(),
                 }
-
-            self.params = calibrated
 
             return calibrated
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
+        except Exception:
+            logger.error("Failed to calibrate generator from dataframe", exc_info=True)
+            raise
 
-    def generate_normal_transaction(self, time_interval: int):
-        try:
-            data = {
-                "transaction_id": str(uuid.uuid4()),
-                "Time": time_interval
-            }
+    def generate_normal_transaction(self, time_interval: int) -> dict:
+        amount_params = self.params["normal"]["amount"]
+        data = {
+            "transaction_id": str(uuid.uuid4()),
+            "Time": time_interval,
+            "Amount": np.random.lognormal(mean=amount_params["mean"], sigma=amount_params["sigma"]),
+            "Class": 0,
+        }
+        for i in range(1, 29):
+            col = f"V{i}"
+            p = self.params["normal"]["v_features"][col]
+            data[col] = np.random.normal(p["mean"], p["std"])
+        return data
 
-            amount_params = self.params["normal"]["amount"]
-            data["Amount"] = np.random.lognormal(
-                mean=amount_params["mean"],
-                sigma=amount_params["sigma"]
-            )
-
-            for i in range(1, 29):
-                v_col = f"V{i}"
-                v_params = self.params["normal"]["v_features"][v_col]
-
-                data[v_col] = np.random.normal(
-                    v_params["mean"],
-                    v_params["std"]
-                )
-
-            data["Class"] = 0
-
-            return data
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
-
-    def generate_normal_transactions(self, n_samples=1000) -> DataFrame:
+    def generate_normal_transactions(self, n_samples: int = 1000) -> DataFrame:
         time_intervals = np.linspace(0, self.max_transaction_time, num=n_samples).tolist()
-        rows = []
-        for time_interval in time_intervals:
-            row = self.generate_normal_transaction(time_interval)
-            rows.append(row)
-        return pd.DataFrame(rows)
+        return pd.DataFrame([self.generate_normal_transaction(t) for t in time_intervals])
 
-    def generate_fraudulent_transaction(self, time_interval: int):
-        try:
-            data = {
-                "transaction_id": str(uuid.uuid4()),
-                "Time": time_interval
-            }
+    def generate_fraudulent_transaction(self, time_interval: int) -> dict:
+        ranges = self.params["fraud"]["amount_ranges"]
+        bucket_names = list(ranges.keys())
+        proportions = [ranges[b]["proportion"] for b in bucket_names]
+        chosen = np.random.choice(bucket_names, p=proportions)
+        amount = np.random.uniform(ranges[chosen]["min"], ranges[chosen]["max"])
 
-            fraud_ranges = self.params["fraud"]["amount_ranges"]
-            fraud_type = np.random.choice(
-                ["small", "medium", "large"],
-                p=[fraud_ranges["small"]["proportion"],
-                   fraud_ranges["medium"]["proportion"],
-                   fraud_ranges["large"]["proportion"]]
-            )
+        data = {
+            "transaction_id": str(uuid.uuid4()),
+            "Time": time_interval,
+            "Amount": amount,
+            "Class": 1,
+        }
+        for i in range(1, 29):
+            col = f"V{i}"
+            p = self.params["fraud"]["v_features"][col]
+            data[col] = np.random.normal(p["mean"], p["std"])
+        return data
 
-            if fraud_type == "small":
-                amount = np.random.uniform(
-                    fraud_ranges["small"]["min"],
-                    fraud_ranges["small"]["max"]
-                )
-            elif fraud_type == "medium":
-                amount = np.random.uniform(
-                    fraud_ranges["medium"]["min"],
-                    fraud_ranges["medium"]["max"]
-                )
-            else:
-                amount = np.random.uniform(
-                    fraud_ranges["large"]["min"],
-                    fraud_ranges["large"]["max"]
-                )
-
-            data["Amount"] = amount
-
-            for i in range(1, 29):
-                v_col = f"V{i}"
-                v_params = self.params["fraud"]["v_features"][v_col]
-
-                data[v_col] = np.random.normal(
-                    v_params["mean"],
-                    v_params["std"]
-                )
-
-            data["Class"] = 1
-
-            return data
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
-
-    def generate_fraudulent_transactions(self, n_samples=100) -> DataFrame:
+    def generate_fraudulent_transactions(self, n_samples: int = 100) -> DataFrame:
         time_intervals = np.linspace(0, self.max_transaction_time, num=n_samples).tolist()
-        rows = []
-        for time in time_intervals:
-            row = self.generate_fraudulent_transaction(time)
-            rows.append(row)
-        return pd.DataFrame(rows)
+        return pd.DataFrame([self.generate_fraudulent_transaction(t) for t in time_intervals])
 
     def generate_transaction(self, time_interval: int) -> dict:
-        try:
-            if random.random() < self.fraud_rate:
-                return self.generate_fraudulent_transaction(time_interval)
-            else:
-                return self.generate_normal_transaction(time_interval)
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
+        if random.random() < self.fraud_rate:
+            return self.generate_fraudulent_transaction(time_interval)
+        return self.generate_normal_transaction(time_interval)
 
-    def generate_dataset(self, n_normal=10000, n_fraud=100, shuffle=True) -> DataFrame:
+    def generate_dataset(self, n_normal: int = 10000, n_fraud: int = 100, shuffle: bool = True) -> DataFrame:
         try:
             normal_df = self.generate_normal_transactions(n_normal)
             fraud_df = self.generate_fraudulent_transactions(n_fraud)
-
-            synthetic_data = pd.concat([normal_df, fraud_df], ignore_index=True)
-
+            combined = pd.concat([normal_df, fraud_df], ignore_index=True)
             if shuffle:
-                synthetic_data = synthetic_data.sample(frac=1, random_state=42).reset_index(drop=True)
-
+                combined = combined.sample(frac=1, random_state=42).reset_index(drop=True)
             column_order = ["Time"] + [f"V{i}" for i in range(1, 29)] + ["Amount", "Class"]
-            synthetic_data = synthetic_data[column_order]
+            return combined[column_order]
+        except Exception:
+            logger.error("Failed to generate dataset", exc_info=True)
+            raise
 
-            return synthetic_data
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
-
-    def save_dataset(self, df, filename="synthetic_fraud_data.csv"):
+    def save_dataset(self, df: DataFrame, filename: str = "synthetic_fraud_data.csv") -> None:
         try:
             df.to_csv(filename, index=False)
-            logger.info(f"Dataset saved to {filename}")
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
+            logger.info("Dataset saved to %s", filename)
+        except Exception:
+            logger.error("Failed to save dataset to %s", filename, exc_info=True)
+            raise

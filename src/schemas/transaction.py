@@ -1,8 +1,8 @@
 from datetime import datetime
-
-from pydantic import BaseModel, Field, field_validator
 from typing import Dict
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class TransactionBase(BaseModel):
@@ -13,11 +13,12 @@ class TransactionBase(BaseModel):
     is_fraud: bool = False
     data_source: str
 
+
 class TransactionCanonical(TransactionBase):
     event_timestamp: datetime
-    created_at: datetime = datetime.now()
+    created_at: datetime = Field(default_factory=datetime.now)
 
-    @field_validator('event_timestamp', mode='before')
+    @field_validator("event_timestamp", mode="before")
     @classmethod
     def parse_timestamp(cls, v):
         if isinstance(v, str):

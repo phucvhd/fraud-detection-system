@@ -17,32 +17,25 @@ from src.services.kafka_service import KafkaService
 
 logger = logging.getLogger(__name__)
 
+
 class FraudService:
     def __init__(self, config_loader: ConfigLoader):
         self.config_loader = config_loader
-        model_id = config_loader.config["api"]["fraud_detection"]["model"]["id"]
-        self.kafka_config_loader = KafkaConfigLoader(config_loader)
-        self.kafka_service = KafkaService(self.kafka_config_loader)
         self.fraud_detection_config = config_loader.config["api"]["fraud_detection"]
+        kafka_config_loader = KafkaConfigLoader(config_loader)
+        self.kafka_service = KafkaService(kafka_config_loader)
         self.s3_client = S3Client(config_loader)
         self.scaler: StandardScaler | None = None
-        self.model = self._load_model(model_id)
+        self.model = self._load_model(config_loader.config["api"]["fraud_detection"]["model"]["id"])
 
     def _load_model(self, model_id: str):
+        logger.info("Loading model id=%s", model_id)
         try:
-            logger.info(f"Loading model with id={model_id}")
             obj = self.s3_client.get_object(f"models/{model_id}.tar.gz")
-            bytestream = io.BytesIO(obj)
+            tar = tarfile.open(fileobj=io.BytesIO(obj), mode="r:gz")
 
-            tar = tarfile.open(fileobj=bytestream, mode="r:gz")
-
-            model_member = None
-            scaler_member = None
-            for member in tar.getmembers():
-                if member.name.endswith("model.joblib"):
-                    model_member = member
-                elif member.name.endswith("scaler.joblib"):
-                    scaler_member = member
+            model_member = next((m for m in tar.getmembers() if m.name.endswith("model.joblib")), None)
+            scaler_member = next((m for m in tar.getmembers() if m.name.endswith("scaler.joblib")), None)
 
             if model_member is None:
                 raise FileNotFoundError("model.joblib not found inside tar.gz")
@@ -51,156 +44,114 @@ class FraudService:
 
             if scaler_member is not None:
                 self.scaler = joblib.load(tar.extractfile(scaler_member))
-                logger.info(f"Scaler loaded for model id={model_id}")
+                logger.info("Scaler loaded for model id=%s", model_id)
             else:
-                logger.warning(f"No scaler.joblib found in archive for model id={model_id}. amount_scaled may be inaccurate.")
+                logger.warning("No scaler.joblib found for model id=%s; amount_scaled will use log_amount", model_id)
 
-            logger.info(f"Model id={model_id} loaded successfully")
+            logger.info("Model id=%s loaded successfully", model_id)
             return model
-        except Exception as e:
-            logger.error(f"Failed to load model id={model_id}")
-            raise e
+        except Exception:
+            logger.error("Failed to load model id=%s", model_id, exc_info=True)
+            raise
 
     def predict_transaction(self, transaction: dict) -> TransactionCanonical:
-        transaction_df = pd.DataFrame([transaction])
         transaction_id = transaction["transaction_id"]
-        logger.info(f"Processing transaction={transaction_id}")
+        logger.info("Processing transaction=%s", transaction_id)
 
-        transaction_df_processed = self.process(transaction_df)
-        transaction_df_cleaned = self.clean_features(transaction_df_processed)
+        df = pd.DataFrame([transaction])
+        df = self.process(df)
+        features = self.clean_features(df)
 
-        prediction = self.model.predict(transaction_df_cleaned)[0]
+        prediction = self.model.predict(features)[0]
 
         try:
-            probabilities = self.model.predict_proba(transaction_df_cleaned)
-            fraud_probability = float(probabilities[0][1])
+            fraud_probability = float(self.model.predict_proba(features)[0][1])
         except AttributeError:
             fraud_probability = float(prediction)
 
-        confidence = self._get_confidence_level(fraud_probability)
-
         now = datetime.datetime.now()
-        result = {
-            "transaction_id": transaction_id,
-            "is_fraud": bool(prediction),
-            "event_time_seconds": transaction['Time'],
-            "amount": transaction['Amount'],
-            "event_timestamp": now.isoformat(),
-            "data_source": "ms-fraud-detection",
-            "created_at": now.isoformat(),
-            "features": {f"V{i}": transaction_df.iloc[0][f"V{i}"] for i in range(1, 29)},
-            # "fraud_probability": fraud_probability,
-            # "confidence": confidence
-        }
-        transaction = TransactionCanonical(**result)
-        logger.info(f"Predict transaction={transaction_id} successfully")
-        return transaction
+        result = TransactionCanonical(
+            transaction_id=transaction_id,
+            is_fraud=bool(prediction),
+            event_time_seconds=transaction["Time"],
+            amount=transaction["Amount"],
+            event_timestamp=now,
+            data_source="ms-fraud-detection",
+            created_at=now,
+            features={f"V{i}": df.iloc[0][f"V{i}"] for i in range(1, 29)},
+        )
+        logger.info("Predicted transaction=%s is_fraud=%s", transaction_id, result.is_fraud)
+        return result
 
-    def fraud_handler(self, msg_value):
-        kafka_service = KafkaService(self.kafka_config_loader)
-
+    def fraud_handler(self, msg_value: bytes) -> None:
         transaction = json.loads(msg_value.decode("utf-8"))
         decision = self.predict_transaction(transaction)
         payload = json.dumps(decision.model_dump(mode="json")).encode("utf-8")
+        key = str(decision.transaction_id)
 
         if decision.is_fraud:
-            fraud_alerts_topic = self.fraud_detection_config["kafka"]["fraud_alerts_topic"]
-            kafka_service.send_message(fraud_alerts_topic, str(decision.transaction_id), payload)
-            logger.info(f"An alert for transaction={str(decision.transaction_id)} has been sent to {fraud_alerts_topic}")
+            topic = self.fraud_detection_config["kafka"]["fraud_alerts_topic"]
+            self.kafka_service.send_message(topic, key, payload)
+            logger.info("Fraud alert sent for transaction=%s to %s", key, topic)
 
         decision_topic = self.fraud_detection_config["kafka"]["decision_topic"]
-        kafka_service.send_message(decision_topic, str(decision.transaction_id), payload)
-        logger.info(f"Decision for transaction={str(decision.transaction_id)} has been sent to {decision_topic}")
+        self.kafka_service.send_message(decision_topic, key, payload)
+        logger.info("Decision sent for transaction=%s to %s", key, decision_topic)
+
+    def add_time_features(self, data_x: pd.DataFrame) -> pd.DataFrame:
+        if "Time" not in data_x.columns:
+            raise ValueError("Missing required column: Time")
+
+        data_x = data_x.copy()
+        hour = (data_x["Time"] / 3600) % 24
+        data_x["hour_of_day"] = hour
+        data_x["day_period"] = pd.cut(hour, bins=[0, 6, 12, 18, 24], labels=[0, 1, 2, 3], include_lowest=True)
+        data_x["time_since_start"] = data_x["Time"] / data_x["Time"].max()
+        return data_x
+
+    def add_amount_features(self, data_x: pd.DataFrame) -> pd.DataFrame:
+        if "Amount" not in data_x.columns:
+            raise ValueError("Missing required column: Amount")
+
+        data_x = data_x.copy()
+        data_x["log_amount"] = np.log1p(data_x["Amount"])
+
+        if self.scaler is not None:
+            data_x["amount_scaled"] = self.scaler.transform(data_x[["Amount"]])
+        else:
+            data_x["amount_scaled"] = data_x["log_amount"]
+
+        return data_x
+
+    def process(self, data_x: pd.DataFrame) -> pd.DataFrame:
+        try:
+            data_x = self.add_time_features(data_x)
+            data_x = self.add_amount_features(data_x)
+            return data_x
+        except Exception:
+            logger.error("Feature engineering failed", exc_info=True)
+            raise
+
+    def clean_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        v_features = self.config_loader.config["preprocessor"]["features_to_scale"]
+        engineered = ["Amount", "hour_of_day", "day_period", "time_since_start", "log_amount", "amount_scaled"]
+        all_features = ["Time"] + v_features + engineered
+        return df[all_features]
 
     def _get_confidence_level(self, probability: float) -> str:
         if probability >= 0.8 or probability <= 0.2:
             return "high"
         elif probability >= 0.6 or probability <= 0.4:
             return "medium"
-        else:
-            return "low"
+        return "low"
 
-    def get_hour_risk_score(self, hour):
-        if 0 <= hour < 4:
-            return 0.003968
-        elif 4 <= hour < 8:
-            return 0.005402
-        elif 8 <= hour < 12:
-            return 0.002177
-        elif 12 <= hour < 16:
-            return 0.001443
-        elif 16 <= hour < 20:
-            return 0.001488
-        elif 20 <= hour < 24:
-            return 0.001237
-        else:
-            return 0.002
-
-    logger.info("Helper functions defined")
-
-    def add_time_features(self, data_x):
-        logger.info("Add time-based features")
-        data_x = data_x.copy()
-        if "Time" in data_x.columns:
-            logger.debug("Add time features")
-            data_x = data_x.copy()
-
-            data_x["hour_of_day"] = (data_x["Time"] / 3600) % 24
-            logger.debug("Added hour_of_day")
-
-            hour = (data_x["Time"] / 3600) % 24
-            data_x["day_period"] = pd.cut(hour, bins=[0, 6, 12, 18, 24],
-                                     labels=[0, 1, 2, 3], include_lowest=True)
-            logger.debug("Added day_period")
-
-            data_x["time_since_start"] = data_x["Time"] / data_x["Time"].max()
-            logger.debug("Added time_since_start")
-        else:
-            logger.error("Missing column=Time")
-            raise ValueError("Transaction format is invalid")
-
-        return data_x
-
-    def add_amount_features(self, data_x):
-        logger.info("Add amount-based features")
-        data_x = data_x.copy()
-
-        if "Amount" not in data_x.columns:
-            logger.error("Missing column=Amount")
-            raise ValueError("Transaction format is invalid")
-
-        data_x["log_amount"] = np.log1p(data_x["Amount"])
-        logger.debug("Added log_amount")
-
-        if self.scaler is not None:
-            data_x["amount_scaled"] = self.scaler.transform(data_x[["Amount"]])
-        else:
-            scaler = StandardScaler()
-            data_x["amount_scaled"] = scaler.fit_transform(data_x[["Amount"]])
-        logger.debug("Added amount_scaled")
-
-        return data_x
-
-    def process(self, data_x):
-        try:
-            logger.info("Features processing")
-            data_time_x = self.add_time_features(data_x)
-            data_time_amount_x = self.add_amount_features(data_time_x)
-            logger.info("Features processing complete")
-
-            return data_time_amount_x
-        except Exception as e:
-            logger.error("Error while processing Feature engineering")
-            raise e
-
-    def clean_features(self, df):
-        try:
-            features_to_scale = self.config_loader.config["preprocessor"]["features_to_scale"]
-            all_features = ["Time"] + features_to_scale + ["Amount", "hour_of_day", "day_period", "time_since_start", "log_amount", "amount_scaled"]
-
-            cleaned_df = df[all_features]
-            logger.info(f"Total features: {cleaned_df.shape[1]}")
-            return cleaned_df
-        except Exception as e:
-            logger.error("Unexpected error: ", e)
-            raise e
+    def get_hour_risk_score(self, hour: int) -> float:
+        risk_map = {
+            range(0, 4): 0.003968,
+            range(4, 8): 0.005402,
+            range(8, 12): 0.002177,
+            range(12, 16): 0.001443,
+            range(16, 20): 0.001488,
+            range(20, 24): 0.001237,
+        }
+        return next((v for r, v in risk_map.items() if hour in r), 0.002)

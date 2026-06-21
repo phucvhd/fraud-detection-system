@@ -9,99 +9,81 @@ from config.kafka_config import KafkaConfigLoader
 
 logger = logging.getLogger(__name__)
 
+
 class KafkaService:
     def __init__(self, kafka_config_loader: KafkaConfigLoader):
-        self.kafka_producer_config = kafka_config_loader.kafka_producer_config
-        self.kafka_consumer_config = kafka_config_loader.kafka_consumer_config
         self.consumer = kafka_config_loader.consumer
         self.producer = kafka_config_loader.producer
         self.admin = kafka_config_loader.admin
 
-    def list_all_topics(self):
+    def list_all_topics(self) -> list[str]:
         try:
             metadata = self.admin.list_topics(timeout=5)
-            logger.info("Connected to Kafka")
-            logger.info("Topics:", list(metadata.topics.keys()))
+            topics = list(metadata.topics.keys())
+            logger.info("Listed %d Kafka topics", len(topics))
+            return topics
+        except Exception:
+            logger.error("Failed to list Kafka topics", exc_info=True)
+            raise
 
-            return list(metadata.topics.keys())
-        except Exception as e:
-            logger.error("Cannot connect to Kafka", str(e))
-            
-    def send_message(self, topic: str, key: str, message):
+    def send_message(self, topic: str, key: str, message) -> None:
         try:
-            self.producer.produce(
-                topic,
-                key=key,
-                value=message,
-                callback=self.delivery_report
-            )
+            if isinstance(message, dict):
+                message = json.dumps(message).encode("utf-8")
+            elif isinstance(message, str):
+                message = message.encode("utf-8")
+            self.producer.produce(topic, key=key, value=message, callback=self.delivery_report)
             self.producer.flush(timeout=10)
-        except Exception as e:
-            logger.error(f"Cannot send message to topic={topic}", str(e))
+        except Exception:
+            logger.error("Failed to send message to topic=%s", topic, exc_info=True)
+            raise
 
-    def consume_topic(self, topic: str, consume_time: int):
+    def consume_topic(self, topic: str, consume_time: int) -> list:
+        messages = []
         try:
             self.consumer.subscribe([topic])
-
-            logger.info(f"Listening for messages (timeout: {consume_time} seconds)...")
-
-            message_count = 0
-            messages = []
-            timeout = time.time() + consume_time
-
-            while time.time() < timeout:
+            deadline = time.time() + consume_time
+            while time.time() < deadline:
                 msg = self.consumer.poll(timeout=1.0)
-
                 if msg is None:
                     continue
                 if msg.error():
                     if msg.error().code() == KafkaError._PARTITION_EOF:
-                        logger.info("Reached end of partition")
                         continue
-                    else:
-                        logger.error(f"Consumer error: {msg.error()}")
-                        break
-
-                try:
-                    message_value = json.loads(msg.value().decode("utf-8"))
-                    logger.info(f"Received: {message_value}")
-                    message_count += 1
-                    messages.append(str(message_value))
+                    logger.error("Consumer error: %s", msg.error())
                     break
-                except json.JSONDecodeError as e:
-                    logger.info(f"Failed to decode message: {e}")
-                    logger.info(f"Raw message: {msg.value()}")
-
+                try:
+                    messages.append(json.loads(msg.value().decode("utf-8")))
+                    break
+                except json.JSONDecodeError:
+                    logger.warning("Failed to decode message from topic=%s", topic)
+        finally:
             self.consumer.close()
 
-            if message_count > 0:
-                logger.info(f"Consumer test successful! Read {message_count} messages")
-            else:
-                logger.warning("No messages found, but consumer connected successfully")
+        logger.info("Consumed %d message(s) from topic=%s", len(messages), topic)
+        return messages
 
-            return messages
-        except Exception as e:
-            logger.error(f"Cannot consume message from topic={topic}", str(e))
-            raise e
-
-    def delivery_report(self, err, msg):
-        if err is not None:
-            logger.error(f"Message delivery failed: {err}")
-        else:
-            logger.info(f"Message delivered to {msg.topic()} partition {msg.partition()} offset {msg.offset()}")
-
-    def create_topic(self, topic_name: str):
+    def create_topic(self, topic_name: str) -> None:
         try:
-            self.admin.create_topics(
-                [NewTopic(topic_name, num_partitions=1, replication_factor=1)]
-            )
-        except Exception as e:
-            logger.error(f"Cannot create topic={topic_name}", str(e))
-            raise e
+            self.admin.create_topics([NewTopic(topic_name, num_partitions=1, replication_factor=1)])
+            logger.info("Created topic=%s", topic_name)
+        except Exception:
+            logger.error("Failed to create topic=%s", topic_name, exc_info=True)
+            raise
 
-    def delete_topic(self, topic_name: str):
+    def delete_topic(self, topic_name: str) -> None:
         try:
             self.admin.delete_topics([topic_name], operation_timeout=10)
-        except Exception as e:
-            logger.error(f"Cannot delete topic={topic_name}", str(e))
-            raise e
+            logger.info("Deleted topic=%s", topic_name)
+        except Exception:
+            logger.error("Failed to delete topic=%s", topic_name, exc_info=True)
+            raise
+
+    def delivery_report(self, err, msg) -> None:
+        if err is not None:
+            logger.error("Message delivery failed: %s", err)
+        else:
+            logger.info(
+                "Message delivered to %s partition %d offset %d",
+                msg.topic(), msg.partition(), msg.offset(),
+            )

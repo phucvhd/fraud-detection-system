@@ -75,17 +75,16 @@ def test_fraud_handler(fraud_service):
     }
     for i in range(1, 29):
         transaction[f"V{i}"] = 0.5
-        
+
     msg_value = json.dumps(transaction).encode("utf-8")
-    
-    with patch("src.services.fraud_service.KafkaService") as mock_kafka:
-        kafka_instance = mock_kafka.return_value
-        fraud_service.fraud_handler(msg_value)
-        
-        assert kafka_instance.send_message.call_count == 2
-        calls = kafka_instance.send_message.call_args_list
-        assert calls[0][0][0] == "alerts"
-        assert calls[1][0][0] == "decisions"
+
+    fraud_service.kafka_service = Mock()
+    fraud_service.fraud_handler(msg_value)
+
+    assert fraud_service.kafka_service.send_message.call_count == 2
+    calls = fraud_service.kafka_service.send_message.call_args_list
+    assert calls[0][0][0] == "alerts"
+    assert calls[1][0][0] == "decisions"
 
 def test_get_confidence_level(fraud_service):
     assert fraud_service._get_confidence_level(0.9) == "high"

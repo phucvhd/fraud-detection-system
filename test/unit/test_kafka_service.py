@@ -31,14 +31,14 @@ def test_send_message(kafka_service):
     topic = "test_topic"
     key = "key1"
     message = "message_value"
-    
+
     kafka_service.send_message(topic, key, message)
-    
+
     kafka_service.producer.produce.assert_called_once_with(
         topic,
         key=key,
-        value=message,
-        callback=kafka_service.delivery_report
+        value=b"message_value",
+        callback=kafka_service.delivery_report,
     )
     kafka_service.producer.flush.assert_called_once_with(timeout=10)
 
@@ -54,8 +54,8 @@ def test_consume_topic(mock_time, kafka_service):
     kafka_service.consumer.poll.return_value = mock_msg
     
     result = kafka_service.consume_topic(topic, 1)
-    
-    assert result == ["{'msg': 'hello'}"]
+
+    assert result == [{"msg": "hello"}]
     kafka_service.consumer.subscribe.assert_called_once_with([topic])
     kafka_service.consumer.close.assert_called_once()
 
