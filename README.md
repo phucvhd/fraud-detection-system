@@ -207,7 +207,7 @@ The model is trained on the full feature set: `Time`, `V1`–`V28`, and the five
 ### Run tests
 
 ```bash
-PYTHONPATH=. pytest test/unit/ -v
+PYTHONPATH=. pytest test/ -v
 ```
 
 ### Kafka UI
@@ -220,4 +220,4 @@ Available at `http://localhost:5001`. Tracks training runs from the [ml-pipeline
 
 ### CI
 
-GitHub Actions runs unit tests on every push to `main` or `feature/**` branches. See `.github/workflows/ci.yml`.
+GitHub Actions runs the test suite (`pytest test/`) on every push to `main` or `feature/**` branches, and on pull requests to `main`. See `.github/workflows/ci.yml`.

@@ -44,7 +44,13 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    # Signal the listener to stop, then wait for its thread to close the consumer
+    # cleanly (the consumer must be closed on the polling thread, not here).
     fraud_listener.stop_listener()
+    thread.join(timeout=10)
+
+    # Drain any produce buffer so decisions/alerts aren't lost on shutdown.
+    fraud_service.kafka_service.flush()
 
 
 app = FastAPI(lifespan=lifespan)

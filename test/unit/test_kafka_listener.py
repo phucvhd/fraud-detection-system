@@ -29,13 +29,24 @@ def test_start_consumes_messages(mock_kafka_config_loader):
     
     with pytest.raises(Exception, match="Stop Loop"):
         listener.start()
-        
+
     listener.consumer.subscribe.assert_called_once_with(["test_topic"])
     handler.assert_called_once_with(b'{"data": 1}')
     listener.consumer.commit.assert_called_once_with(mock_msg_success)
     assert listener.consumer.poll.call_count == 4
+    # The consumer is closed in start()'s finally, on the polling thread.
+    listener.consumer.close.assert_called_once()
 
-def test_stop(mock_kafka_config_loader):
+def test_stop_signals_only_does_not_close(mock_kafka_config_loader):
+    # stop() must NOT close the consumer (that happens on the polling thread);
+    # calling close() from another thread races an in-flight poll().
     listener = KafkaListener("test_topic", Mock(), mock_kafka_config_loader)
     listener.stop()
+    assert listener._stop_event.is_set()
+    listener.consumer.close.assert_not_called()
+
+def test_start_closes_consumer_when_stop_event_set(mock_kafka_config_loader):
+    listener = KafkaListener("test_topic", Mock(), mock_kafka_config_loader)
+    listener._stop_event.set()
+    listener.start()
     listener.consumer.close.assert_called_once()

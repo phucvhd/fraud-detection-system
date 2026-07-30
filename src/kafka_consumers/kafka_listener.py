@@ -19,18 +19,25 @@ class KafkaListener:
         self.consumer.subscribe([self.topic])
         logger.info("Kafka listener started on topic=%s", self.topic)
 
-        while not self._stop_event.is_set():
-            msg = self.consumer.poll(1.0)
-            if msg is None or msg.error():
-                continue
-            try:
-                self.handler(msg.value())
-                self.consumer.commit(msg)
-            except Exception:
-                logger.error("Failed to process message from topic=%s", self.topic, exc_info=True)
-
-        logger.info("Kafka listener stopped on topic=%s", self.topic)
+        try:
+            while not self._stop_event.is_set():
+                msg = self.consumer.poll(1.0)
+                if msg is None:
+                    continue
+                if msg.error():
+                    logger.error("Consumer error on topic=%s: %s", self.topic, msg.error())
+                    continue
+                try:
+                    self.handler(msg.value())
+                    self.consumer.commit(msg)
+                except Exception:
+                    logger.error("Failed to process message from topic=%s", self.topic, exc_info=True)
+        finally:
+            # confluent_kafka.Consumer is NOT thread-safe: close it on the same
+            # thread that polls, never from the caller of stop().
+            self.consumer.close()
+            logger.info("Kafka listener stopped on topic=%s", self.topic)
 
     def stop(self) -> None:
+        # Only signal the polling thread to exit; it closes the consumer itself.
         self._stop_event.set()
-        self.consumer.close()

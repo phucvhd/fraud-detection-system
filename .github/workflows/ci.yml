@@ -21,7 +21,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run unit tests
+      - name: Run tests
         env:
           PYTHONPATH: .
           AWS_ACCESS_KEY_ID: dummy
@@ -29,4 +29,4 @@ jobs:
           AWS_DEFAULT_REGION: us-east-1
           AWS_BUCKET_NAME: dummy
           KAFKA_BOOTSTRAP_SERVERS: localhost:9092
-        run: pytest test/unit/ -v --tb=short
+        run: pytest test/ -v --tb=short
