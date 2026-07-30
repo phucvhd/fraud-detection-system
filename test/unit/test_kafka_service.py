@@ -40,7 +40,13 @@ def test_send_message(kafka_service):
         value=b"message_value",
         callback=kafka_service.delivery_report,
     )
-    kafka_service.producer.flush.assert_called_once_with(timeout=10)
+    # Non-blocking poll(0) serves delivery callbacks without forcing a flush per message.
+    kafka_service.producer.poll.assert_called_once_with(0)
+    kafka_service.producer.flush.assert_not_called()
+
+def test_flush(kafka_service):
+    kafka_service.flush()
+    kafka_service.producer.flush.assert_called_once_with(10)
 
 @patch("src.services.kafka_service.time.time")
 def test_consume_topic(mock_time, kafka_service):

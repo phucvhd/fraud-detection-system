@@ -34,3 +34,5 @@ async def test_lifespan(mock_dependencies):
 
     # After yield
     mock_listener.return_value.stop_listener.assert_called_once()
+    # The listener thread is joined so the consumer closes cleanly before shutdown.
+    mock_thread.return_value.join.assert_called_once()

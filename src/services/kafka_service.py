@@ -33,10 +33,17 @@ class KafkaService:
             elif isinstance(message, str):
                 message = message.encode("utf-8")
             self.producer.produce(topic, key=key, value=message, callback=self.delivery_report)
-            self.producer.flush(timeout=10)
+            # Serve delivery callbacks without blocking. A per-message flush()
+            # would force a synchronous round-trip and defeat linger.ms / batch.size;
+            # buffered messages are drained by flush() on shutdown.
+            self.producer.poll(0)
         except Exception:
             logger.error("Failed to send message to topic=%s", topic, exc_info=True)
             raise
+
+    def flush(self, timeout: float = 10) -> None:
+        """Block until all buffered produce requests are delivered. Call on shutdown."""
+        self.producer.flush(timeout)
 
     def consume_topic(self, topic: str, consume_time: int) -> list:
         messages = []

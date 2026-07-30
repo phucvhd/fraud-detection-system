@@ -9,9 +9,11 @@ pydantic_core==2.33.2
 confluent-kafka==2.3.0
 
 # AWS SDK for S3
-boto3
-fsspec==2024.10.0
-s3fs
+# s3fs and fsspec are version-locked together — pin both to the same release,
+# otherwise pip resolves a newer s3fs that conflicts with the fsspec pin.
+boto3==1.40.69
+fsspec==2025.12.0
+s3fs==2025.12.0
 
 # Data processing
 pandas==2.1.4
