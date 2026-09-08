@@ -174,3 +174,5 @@ api:
       topic: "transactions"
       decision_topic: "transaction-decisions"
       fraud_alerts_topic: "fraud-alerts"
+      batch_size: 100
+      poll_timeout_seconds: 1.0

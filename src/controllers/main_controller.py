@@ -1,9 +1,11 @@
 import io
+import os
 import threading
 from contextlib import asynccontextmanager
 
 import pandas as pd
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
@@ -54,6 +56,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+cors_origins = [origin.strip() for origin in os.environ.get("CORS_ORIGINS", "*").split(",")]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/health")
