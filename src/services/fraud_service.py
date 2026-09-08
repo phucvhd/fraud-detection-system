@@ -55,9 +55,14 @@ class FraudService:
             raise
 
     def predict_transactions(self, transactions: list[dict]) -> list[TransactionCanonical]:
-        """Score a batch of transactions with one model.predict() call instead of one
-        per transaction — DataFrame construction and inference each carry a fixed
+        """Score a batch of transactions with one model call instead of one per
+        transaction — DataFrame construction and inference each carry a fixed
         per-call cost that batching amortizes across the whole batch.
+
+        Uses predict_proba() rather than predict(): for a tree-ensemble
+        classifier, predict() computes proba internally and argmaxes it anyway,
+        so calling predict_proba() once gets both the decision and the
+        probability for free instead of paying for two passes.
         """
         if not transactions:
             return []
@@ -68,15 +73,27 @@ class FraudService:
         df = self.process(df)
         features = self.clean_features(df)
 
-        predictions = self.model.predict(features)
+        try:
+            # [:, 1] is the probability of the positive (fraud) class.
+            probabilities = self.model.predict_proba(features)[:, 1]
+            # Matches predict()'s own tie-break (argmax picks the first/lower
+            # index), so a 0.5/0.5 split still resolves to "not fraud".
+            is_fraud_flags = probabilities > 0.5
+        except AttributeError:
+            # Model doesn't support predict_proba — fall back to a bare decision
+            # with no probability rather than fabricating one.
+            is_fraud_flags = self.model.predict(features)
+            probabilities = [None] * len(transactions)
 
         now = datetime.datetime.now(datetime.timezone.utc)
         results = []
         for i, transaction in enumerate(transactions):
             transaction_id = transaction["transaction_id"]
+            probability = probabilities[i]
             result = TransactionCanonical(
                 transaction_id=transaction_id,
-                is_fraud=bool(predictions[i]),
+                is_fraud=bool(is_fraud_flags[i]),
+                fraud_probability=(float(probability) if probability is not None else None),
                 event_time_seconds=transaction["Time"],
                 amount=transaction["Amount"],
                 event_timestamp=now,

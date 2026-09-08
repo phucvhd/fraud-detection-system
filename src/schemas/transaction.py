@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Dict
+from typing import Dict, Optional
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field, field_validator
@@ -11,6 +11,7 @@ class TransactionBase(BaseModel):
     amount: float = Field(..., gt=0)
     features: Dict[str, float]
     is_fraud: bool = False
+    fraud_probability: Optional[float] = None
     data_source: str
 
 
