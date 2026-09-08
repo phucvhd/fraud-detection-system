@@ -7,6 +7,7 @@ import tarfile
 import joblib
 import numpy as np
 import pandas as pd
+import shap
 from sklearn.preprocessing import StandardScaler
 
 from config.config_loader import ConfigLoader
@@ -27,6 +28,16 @@ class FraudService:
         self.s3_client = S3Client(config_loader)
         self.scaler: StandardScaler | None = None
         self.model = self._load_model(config_loader.config["api"]["fraud_detection"]["model"]["id"])
+        self.explainer = self._build_explainer(self.model)
+
+    def _build_explainer(self, model):
+        try:
+            return shap.TreeExplainer(model)
+        except Exception:
+            # Not a tree ensemble, or shap doesn't support this model type —
+            # per-transaction SHAP breakdown just won't be available.
+            logger.warning("Could not build a SHAP TreeExplainer for this model; skipping SHAP.", exc_info=True)
+            return None
 
     def _load_model(self, model_id: str):
         logger.info("Loading model id=%s", model_id)
@@ -85,6 +96,8 @@ class FraudService:
             is_fraud_flags = self.model.predict(features)
             probabilities = [None] * len(transactions)
 
+        top_shap_per_row = self._compute_top_shap_features(features)
+
         now = datetime.datetime.now(datetime.timezone.utc)
         results = []
         for i, transaction in enumerate(transactions):
@@ -94,6 +107,7 @@ class FraudService:
                 transaction_id=transaction_id,
                 is_fraud=bool(is_fraud_flags[i]),
                 fraud_probability=(float(probability) if probability is not None else None),
+                top_shap_features=top_shap_per_row[i],
                 event_time_seconds=transaction["Time"],
                 amount=transaction["Amount"],
                 event_timestamp=now,
@@ -103,6 +117,34 @@ class FraudService:
             )
             results.append(result)
             logger.info("Predicted transaction=%s is_fraud=%s", transaction_id, result.is_fraud)
+        return results
+
+    def _compute_top_shap_features(self, features: pd.DataFrame, top_n: int = 5) -> list[dict[str, float] | None]:
+        """Per-transaction SHAP breakdown: which features actually drove THIS
+        row's score, ranked by magnitude — unlike the static global correlation
+        map, this is specific to the individual transaction, not a fixed
+        lookup shared by every transaction with a similar feature value.
+        One batched explainer call for the whole DataFrame, same reasoning as
+        batching predict_proba above.
+        """
+        if self.explainer is None:
+            return [None] * len(features)
+
+        try:
+            raw = self.explainer.shap_values(features)
+            # Binary classifier: TreeExplainer returns a 2-item list (one array
+            # per class); index 1 is the positive/fraud class, matching the
+            # predict_proba indexing above.
+            fraud_shap = raw[1] if isinstance(raw, list) else raw
+        except Exception:
+            logger.error("SHAP computation failed for batch", exc_info=True)
+            return [None] * len(features)
+
+        columns = features.columns
+        results = []
+        for row in fraud_shap:
+            ranked = sorted(zip(columns, row), key=lambda item: abs(item[1]), reverse=True)[:top_n]
+            results.append({name: round(float(value), 5) for name, value in ranked})
         return results
 
     def predict_transaction(self, transaction: dict) -> TransactionCanonical:

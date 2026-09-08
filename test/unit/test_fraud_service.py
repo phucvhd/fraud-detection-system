@@ -27,12 +27,13 @@ def mock_config_loader():
     return config
 
 @pytest.fixture
+@patch("src.services.fraud_service.shap")
 @patch("src.services.fraud_service.S3Client")
 @patch("src.services.fraud_service.KafkaConfigLoader")
 @patch("src.services.fraud_service.KafkaService")
 @patch("src.services.fraud_service.tarfile")
 @patch("src.services.fraud_service.joblib")
-def fraud_service(mock_joblib, mock_tarfile, mock_kafka_service, mock_kafka_config, mock_s3_client, mock_config_loader):
+def fraud_service(mock_joblib, mock_tarfile, mock_kafka_service, mock_kafka_config, mock_s3_client, mock_shap, mock_config_loader):
     mock_model = Mock()
     mock_model.predict.return_value = np.array([1])
     mock_model.predict_proba.return_value = np.array([[0.1, 0.9]])
@@ -47,6 +48,16 @@ def fraud_service(mock_joblib, mock_tarfile, mock_kafka_service, mock_kafka_conf
     mock_tar.getmembers.return_value = [mock_member]
     mock_tar.extractfile.return_value = Mock()
     mock_tarfile.open.return_value = mock_tar
+
+    # Default explainer: shape-matches whatever batch it's given so existing
+    # tests (which don't care about SHAP output) keep working regardless of
+    # batch size; dedicated SHAP tests override shap_values explicitly.
+    mock_explainer = Mock()
+    mock_explainer.shap_values.side_effect = lambda features: [
+        np.zeros((len(features), features.shape[1])),
+        np.zeros((len(features), features.shape[1])),
+    ]
+    mock_shap.TreeExplainer.return_value = mock_explainer
 
     service = FraudService(mock_config_loader)
     return service
@@ -104,6 +115,64 @@ def test_predict_transactions_falls_back_to_predict_without_proba(fraud_service)
 
     assert result.is_fraud is True
     assert result.fraud_probability is None
+
+
+def test_predict_transaction_includes_top_shap_features(fraud_service):
+    # 35 columns: Time, V1..V28, Amount, hour_of_day, day_period,
+    # time_since_start, log_amount, amount_scaled (matches clean_features()).
+    # Six nonzero contributions so the 6th-largest (V3) falls outside top_n=5.
+    row = np.zeros(35)
+    row[2] = -0.90    # V2 — largest magnitude
+    row[0] = -0.50    # Time — 2nd
+    row[1] = 0.30     # V1 — 3rd
+    row[4] = 0.20     # V4 — 4th
+    row[5] = 0.15     # V5 — 5th
+    row[3] = 0.05     # V3 — 6th, should be excluded from top 5
+    # The fixture's default explainer sets side_effect (not return_value), which
+    # takes precedence — clear it so this test's return_value actually applies.
+    fraud_service.explainer.shap_values.side_effect = None
+    fraud_service.explainer.shap_values.return_value = [np.zeros((1, 35)), np.array([row])]
+
+    transaction = {"transaction_id": "123e4567-e89b-12d3-a456-426614174000", "Time": 3600, "Amount": 100.0}
+    for i in range(1, 29):
+        transaction[f"V{i}"] = 0.5
+
+    result = fraud_service.predict_transaction(transaction)
+
+    assert result.top_shap_features is not None
+    assert len(result.top_shap_features) == 5
+    ranked = list(result.top_shap_features.items())
+    assert ranked[0] == ("V2", -0.9)
+    assert ranked[1] == ("Time", -0.5)
+    assert ranked[2] == ("V1", 0.3)
+    assert ranked[3] == ("V4", 0.2)
+    assert ranked[4] == ("V5", 0.15)
+    assert "V3" not in result.top_shap_features
+
+
+def test_predict_transactions_shap_is_none_when_no_explainer(fraud_service):
+    fraud_service.explainer = None
+
+    transaction = {"transaction_id": "123e4567-e89b-12d3-a456-426614174000", "Time": 3600, "Amount": 100.0}
+    for i in range(1, 29):
+        transaction[f"V{i}"] = 0.5
+
+    result = fraud_service.predict_transaction(transaction)
+
+    assert result.top_shap_features is None
+
+
+def test_predict_transactions_shap_failure_falls_back_to_none(fraud_service):
+    fraud_service.explainer.shap_values.side_effect = RuntimeError("boom")
+
+    transaction = {"transaction_id": "123e4567-e89b-12d3-a456-426614174000", "Time": 3600, "Amount": 100.0}
+    for i in range(1, 29):
+        transaction[f"V{i}"] = 0.5
+
+    result = fraud_service.predict_transaction(transaction)
+
+    assert result.is_fraud is True
+    assert result.top_shap_features is None
 
 
 def test_fraud_handler(fraud_service):
