@@ -1,3 +1,10 @@
+# Shared Postgres instance owned by fraud-rag's Alembic migrations. This
+# service only ever writes to the transaction_status table (pipeline progress
+# tracking) — never transactions/transaction_embeddings, which stay owned by
+# fraud-rag's own repositories.
+database:
+  url: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}"
+
 kafka:
   producer:
     transactions_per_second: 100

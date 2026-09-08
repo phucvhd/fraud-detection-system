@@ -27,13 +27,14 @@ def mock_config_loader():
     return config
 
 @pytest.fixture
+@patch("src.services.fraud_service.TransactionStatusClient")
 @patch("src.services.fraud_service.shap")
 @patch("src.services.fraud_service.S3Client")
 @patch("src.services.fraud_service.KafkaConfigLoader")
 @patch("src.services.fraud_service.KafkaService")
 @patch("src.services.fraud_service.tarfile")
 @patch("src.services.fraud_service.joblib")
-def fraud_service(mock_joblib, mock_tarfile, mock_kafka_service, mock_kafka_config, mock_s3_client, mock_shap, mock_config_loader):
+def fraud_service(mock_joblib, mock_tarfile, mock_kafka_service, mock_kafka_config, mock_s3_client, mock_shap, mock_status_client, mock_config_loader):
     mock_model = Mock()
     mock_model.predict.return_value = np.array([1])
     mock_model.predict_proba.return_value = np.array([[0.1, 0.9]])
@@ -194,6 +195,9 @@ def test_fraud_handler(fraud_service):
     assert calls[0][0][0] == "alerts"
     assert calls[1][0][0] == "decisions"
 
+    fraud_service.status_client.mark_received.assert_called_once_with(["123e4567-e89b-12d3-a456-426614174000"])
+    fraud_service.status_client.mark_flagged.assert_called_once_with(["123e4567-e89b-12d3-a456-426614174000"])
+
 
 def test_fraud_handler_batch_of_multiple_transactions(fraud_service):
     fraud_service.model.predict_proba.return_value = np.array([[0.1, 0.9], [0.8, 0.2]])
@@ -214,6 +218,10 @@ def test_fraud_handler_batch_of_multiple_transactions(fraud_service):
     assert calls[0][0][0] == "alerts"
     assert calls[1][0][0] == "decisions"
     assert calls[2][0][0] == "decisions"
+
+    expected_ids = ["123e4567-e89b-12d3-a456-426614174000", "223e4567-e89b-12d3-a456-426614174000"]
+    fraud_service.status_client.mark_received.assert_called_once_with(expected_ids)
+    fraud_service.status_client.mark_flagged.assert_called_once_with(expected_ids)
 
 def test_get_confidence_level(fraud_service):
     assert fraud_service._get_confidence_level(0.9) == "high"

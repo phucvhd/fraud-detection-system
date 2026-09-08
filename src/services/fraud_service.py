@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from config.config_loader import ConfigLoader
 from config.kafka_config import KafkaConfigLoader
 from src.clients.s3_client import S3Client
+from src.clients.status_client import TransactionStatusClient
 from src.schemas.transaction import TransactionBase, TransactionCanonical
 from src.services.kafka_service import KafkaService
 
@@ -26,6 +27,7 @@ class FraudService:
         kafka_config_loader = KafkaConfigLoader(config_loader)
         self.kafka_service = KafkaService(kafka_config_loader)
         self.s3_client = S3Client(config_loader)
+        self.status_client = TransactionStatusClient(config_loader)
         self.scaler: StandardScaler | None = None
         self.model = self._load_model(config_loader.config["api"]["fraud_detection"]["model"]["id"])
         self.explainer = self._build_explainer(self.model)
@@ -152,7 +154,10 @@ class FraudService:
 
     def fraud_handler(self, msg_values: list[bytes]) -> None:
         transactions = [json.loads(v.decode("utf-8")) for v in msg_values]
+        self.status_client.mark_received([str(t["transaction_id"]) for t in transactions])
+
         decisions = self.predict_transactions(transactions)
+        self.status_client.mark_flagged([str(d.transaction_id) for d in decisions])
 
         for decision in decisions:
             payload = json.dumps(decision.model_dump(mode="json")).encode("utf-8")

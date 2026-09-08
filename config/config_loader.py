@@ -1,6 +1,13 @@
 import os
+import re
 import yaml
 from dotenv import load_dotenv
+
+# Matches every ${VAR} / ${VAR:-default} occurrence in a string, not just a
+# string that IS a single ${...} reference — a value like
+# "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@..." has several.
+_ENV_VAR_PATTERN = re.compile(r"\$\{([^}]+)\}")
+
 
 def _get_project_root() -> str:
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -33,20 +40,23 @@ class ConfigLoader:
             return {k: self._substitute_env_vars(v) for k, v in obj.items()}
         elif isinstance(obj, list):
             return [self._substitute_env_vars(item) for item in obj]
-        elif isinstance(obj, str) and obj.startswith('${') and obj.endswith('}'):
-            var_expr = obj[2:-1]
-            # Support default value syntax: ${VAR:-default}
-            if ':-' in var_expr:
-                var_name, default_value = var_expr.split(':-', 1)
-                value = os.getenv(var_name.strip())
-                return value if value is not None else default_value
-            else:
-                var_name = var_expr
-                value = os.getenv(var_name)
-                if value is None:
-                    raise ValueError(f"Environment variable '{var_name}' not found!")
-                return value
+        elif isinstance(obj, str) and "${" in obj:
+            return _ENV_VAR_PATTERN.sub(self._resolve_one, obj)
         return obj
+
+    @staticmethod
+    def _resolve_one(match: re.Match) -> str:
+        var_expr = match.group(1)
+        # Support default value syntax: ${VAR:-default}
+        if ":-" in var_expr:
+            var_name, default_value = var_expr.split(":-", 1)
+            value = os.getenv(var_name.strip())
+            return value if value is not None else default_value
+        var_name = var_expr
+        value = os.getenv(var_name)
+        if value is None:
+            raise ValueError(f"Environment variable '{var_name}' not found!")
+        return value
 
     def get(self, key, default=None):
         return self.config.get(key, default)

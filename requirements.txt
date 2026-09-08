@@ -26,6 +26,12 @@ joblib==1.5.2
 # pin above (and would silently change how the pickled model unpickles/behaves).
 shap==0.44.1
 
+# Transaction status tracking (writes to the shared Postgres instance owned
+# by fraud-rag's Alembic migrations — this service only ever touches the
+# transaction_status table, never `transactions`/`transaction_embeddings`).
+SQLAlchemy==2.0.46
+psycopg2-binary==2.9.11
+
 # Configuration
 PyYAML==6.0.3
 python-dotenv==1.0.0
