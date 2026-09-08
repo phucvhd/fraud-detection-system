@@ -42,7 +42,9 @@ def test_start_listener_toggle_on(mock_kafka_listener, mock_kafka_config_loader,
     listener.start_listener(handler)
 
     mock_kafka_config_loader.assert_called_once_with(mock_config_loader)
-    mock_kafka_listener.assert_called_once_with("test_input_topic", handler, mock_kafka_config_loader.return_value)
+    mock_kafka_listener.assert_called_once_with(
+        "test_input_topic", handler, mock_kafka_config_loader.return_value, batch_size=100, poll_timeout=1.0
+    )
     mock_kafka_listener.return_value.start.assert_called_once()
 
 @patch("src.kafka_consumers.fraud_listener.KafkaConfigLoader")

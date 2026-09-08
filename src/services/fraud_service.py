@@ -54,49 +54,59 @@ class FraudService:
             logger.error("Failed to load model id=%s", model_id, exc_info=True)
             raise
 
-    def predict_transaction(self, transaction: dict) -> TransactionCanonical:
-        transaction_id = transaction["transaction_id"]
-        logger.info("Processing transaction=%s", transaction_id)
+    def predict_transactions(self, transactions: list[dict]) -> list[TransactionCanonical]:
+        """Score a batch of transactions with one model.predict() call instead of one
+        per transaction — DataFrame construction and inference each carry a fixed
+        per-call cost that batching amortizes across the whole batch.
+        """
+        if not transactions:
+            return []
 
-        df = pd.DataFrame([transaction])
+        logger.info("Processing batch of %d transaction(s)", len(transactions))
+
+        df = pd.DataFrame(transactions)
         df = self.process(df)
         features = self.clean_features(df)
 
-        prediction = self.model.predict(features)[0]
+        predictions = self.model.predict(features)
 
-        try:
-            fraud_probability = float(self.model.predict_proba(features)[0][1])
-        except AttributeError:
-            fraud_probability = float(prediction)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        results = []
+        for i, transaction in enumerate(transactions):
+            transaction_id = transaction["transaction_id"]
+            result = TransactionCanonical(
+                transaction_id=transaction_id,
+                is_fraud=bool(predictions[i]),
+                event_time_seconds=transaction["Time"],
+                amount=transaction["Amount"],
+                event_timestamp=now,
+                data_source="ms-fraud-detection",
+                created_at=now,
+                features={f"V{j}": df.iloc[i][f"V{j}"] for j in range(1, 29)},
+            )
+            results.append(result)
+            logger.info("Predicted transaction=%s is_fraud=%s", transaction_id, result.is_fraud)
+        return results
 
-        now = datetime.datetime.now()
-        result = TransactionCanonical(
-            transaction_id=transaction_id,
-            is_fraud=bool(prediction),
-            event_time_seconds=transaction["Time"],
-            amount=transaction["Amount"],
-            event_timestamp=now,
-            data_source="ms-fraud-detection",
-            created_at=now,
-            features={f"V{i}": df.iloc[0][f"V{i}"] for i in range(1, 29)},
-        )
-        logger.info("Predicted transaction=%s is_fraud=%s", transaction_id, result.is_fraud)
-        return result
+    def predict_transaction(self, transaction: dict) -> TransactionCanonical:
+        return self.predict_transactions([transaction])[0]
 
-    def fraud_handler(self, msg_value: bytes) -> None:
-        transaction = json.loads(msg_value.decode("utf-8"))
-        decision = self.predict_transaction(transaction)
-        payload = json.dumps(decision.model_dump(mode="json")).encode("utf-8")
-        key = str(decision.transaction_id)
+    def fraud_handler(self, msg_values: list[bytes]) -> None:
+        transactions = [json.loads(v.decode("utf-8")) for v in msg_values]
+        decisions = self.predict_transactions(transactions)
 
-        if decision.is_fraud:
-            topic = self.fraud_detection_config["kafka"]["fraud_alerts_topic"]
-            self.kafka_service.send_message(topic, key, payload)
-            logger.info("Fraud alert sent for transaction=%s to %s", key, topic)
+        for decision in decisions:
+            payload = json.dumps(decision.model_dump(mode="json")).encode("utf-8")
+            key = str(decision.transaction_id)
 
-        decision_topic = self.fraud_detection_config["kafka"]["decision_topic"]
-        self.kafka_service.send_message(decision_topic, key, payload)
-        logger.info("Decision sent for transaction=%s to %s", key, decision_topic)
+            if decision.is_fraud:
+                topic = self.fraud_detection_config["kafka"]["fraud_alerts_topic"]
+                self.kafka_service.send_message(topic, key, payload)
+                logger.info("Fraud alert sent for transaction=%s to %s", key, topic)
+
+            decision_topic = self.fraud_detection_config["kafka"]["decision_topic"]
+            self.kafka_service.send_message(decision_topic, key, payload)
+            logger.info("Decision sent for transaction=%s to %s", key, decision_topic)
 
     def add_time_features(self, data_x: pd.DataFrame) -> pd.DataFrame:
         if "Time" not in data_x.columns:
@@ -106,7 +116,12 @@ class FraudService:
         hour = (data_x["Time"] / 3600) % 24
         data_x["hour_of_day"] = hour
         data_x["day_period"] = pd.cut(hour, bins=[0, 6, 12, 18, 24], labels=[0, 1, 2, 3], include_lowest=True)
-        data_x["time_since_start"] = data_x["Time"] / data_x["Time"].max()
+        # Per-row (Time / Time), not Time / batch-max: this used to run one
+        # transaction at a time, where max() was always that row's own Time —
+        # dividing by the batch max instead would make a transaction's score
+        # depend on which other transactions happened to land in the same
+        # Kafka poll batch, which must stay identical to single-row scoring.
+        data_x["time_since_start"] = data_x["Time"] / data_x["Time"]
         return data_x
 
     def add_amount_features(self, data_x: pd.DataFrame) -> pd.DataFrame:

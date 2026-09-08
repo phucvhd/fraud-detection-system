@@ -14,7 +14,11 @@ class FraudListener:
         if is_toggle_on:
             kafka_config_loader = KafkaConfigLoader(self.config_loader)
             input_topic = self.fraud_detection_config["kafka"]["topic"]
-            self._kafka_listener = KafkaListener(input_topic, handler, kafka_config_loader)
+            batch_size = self.fraud_detection_config["kafka"].get("batch_size", 100)
+            poll_timeout = self.fraud_detection_config["kafka"].get("poll_timeout_seconds", 1.0)
+            self._kafka_listener = KafkaListener(
+                input_topic, handler, kafka_config_loader, batch_size=batch_size, poll_timeout=poll_timeout
+            )
             self._kafka_listener.start()
 
     def stop_listener(self):

@@ -67,6 +67,24 @@ def test_predict_transaction(fraud_service):
     assert result.amount == 100.0
     assert result.event_time_seconds == 3600
 
+def test_predict_transactions_batch_calls_model_once(fraud_service):
+    fraud_service.model.predict.return_value = [1, 0]
+
+    transactions = []
+    for tx_id in ("123e4567-e89b-12d3-a456-426614174000", "223e4567-e89b-12d3-a456-426614174000"):
+        transaction = {"transaction_id": tx_id, "Time": 3600, "Amount": 100.0}
+        for i in range(1, 29):
+            transaction[f"V{i}"] = 0.5
+        transactions.append(transaction)
+
+    results = fraud_service.predict_transactions(transactions)
+
+    fraud_service.model.predict.assert_called_once()
+    assert len(results) == 2
+    assert results[0].is_fraud is True
+    assert results[1].is_fraud is False
+
+
 def test_fraud_handler(fraud_service):
     transaction = {
         "transaction_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -79,12 +97,33 @@ def test_fraud_handler(fraud_service):
     msg_value = json.dumps(transaction).encode("utf-8")
 
     fraud_service.kafka_service = Mock()
-    fraud_service.fraud_handler(msg_value)
+    fraud_service.fraud_handler([msg_value])
 
     assert fraud_service.kafka_service.send_message.call_count == 2
     calls = fraud_service.kafka_service.send_message.call_args_list
     assert calls[0][0][0] == "alerts"
     assert calls[1][0][0] == "decisions"
+
+
+def test_fraud_handler_batch_of_multiple_transactions(fraud_service):
+    fraud_service.model.predict.return_value = [1, 0]
+
+    msg_values = []
+    for tx_id in ("123e4567-e89b-12d3-a456-426614174000", "223e4567-e89b-12d3-a456-426614174000"):
+        transaction = {"transaction_id": tx_id, "Time": 3600, "Amount": 100.0}
+        for i in range(1, 29):
+            transaction[f"V{i}"] = 0.5
+        msg_values.append(json.dumps(transaction).encode("utf-8"))
+
+    fraud_service.kafka_service = Mock()
+    fraud_service.fraud_handler(msg_values)
+
+    # 1 fraud alert + 2 decisions (one per transaction).
+    assert fraud_service.kafka_service.send_message.call_count == 3
+    calls = fraud_service.kafka_service.send_message.call_args_list
+    assert calls[0][0][0] == "alerts"
+    assert calls[1][0][0] == "decisions"
+    assert calls[2][0][0] == "decisions"
 
 def test_get_confidence_level(fraud_service):
     assert fraud_service._get_confidence_level(0.9) == "high"
@@ -99,11 +138,22 @@ def test_get_hour_risk_score(fraud_service):
 def test_add_time_features(fraud_service):
     df = pd.DataFrame([{"Time": 7200}])
     result = fraud_service.add_time_features(df)
-    
+
     assert "hour_of_day" in result.columns
     assert result["hour_of_day"].iloc[0] == 2.0
     assert "day_period" in result.columns
     assert "time_since_start" in result.columns
+
+
+def test_add_time_features_time_since_start_is_row_independent(fraud_service):
+    # A transaction's time_since_start must not depend on which other
+    # transactions happen to land in the same batch — each row divides by its
+    # own Time, not the batch max, so scoring stays identical whether a
+    # transaction is processed alone or alongside others.
+    df = pd.DataFrame([{"Time": 3600}, {"Time": 172800}])
+    result = fraud_service.add_time_features(df)
+
+    assert result["time_since_start"].tolist() == [1.0, 1.0]
 
 def test_add_amount_features(fraud_service):
     df = pd.DataFrame([{"Amount": 100.0}])
